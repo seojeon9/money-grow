@@ -2,16 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 대시보드는 라이트 톤 기준(다크 OS에서도 동일) — 레이아웃/대비 깨짐 방지 */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #fafafa;
+  --foreground: #18181b;
 }
 
 body {
