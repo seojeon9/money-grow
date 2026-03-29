@@ -2,17 +2,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-의존성은 **`web/` 안**에서 설치합니다 (`web/node_modules`에 `react` 등이 함께 있어야 Next가 동작합니다).
-
 ```bash
-cd web
 npm install
-npm run dev
-```
-
-저장소 루트(`money-grow/`)에서는 `web`으로 위임만 합니다(루트에 `npm install` 불필요):
-
-```bash
 npm run dev
 ```
 
@@ -23,8 +14,6 @@ yarn dev
 pnpm dev
 bun dev
 ```
-
-터미널에 나온 주소로 접속하세요(포트가 3001·3002로 바뀔 수 있음).
 
 ### `main-app.js` / `app-pages-internals.js` 404
 
