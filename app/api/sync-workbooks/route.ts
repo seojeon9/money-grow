@@ -14,6 +14,8 @@ import { readdir, readFile, stat } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 const SOURCE_DIRS: { folder: string; label: string }[] = [
   { folder: "seojeong", label: "서정" },
   { folder: "sangyun", label: "상윤" },

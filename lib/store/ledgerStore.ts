@@ -1,5 +1,12 @@
 import type { LedgerEntry, LedgerEntryStatus, NetWorthSnapshot } from "@/lib/excel/importBankExport";
 import { ledgerEntryStableKey } from "@/lib/excel/importBankExport";
+import {
+  DEFAULT_BUDGET_ITEM_LABELS,
+  type BudgetItemKey,
+  type BudgetPlan,
+  type SavedBudgetPlan,
+  emptyBudgetPlan,
+} from "@/lib/budget";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
@@ -15,12 +22,28 @@ export type ImportRecord = {
   addedCount?: number;
 };
 
+export type SettlementGroup = {
+  id: string;
+  createdAt: string;
+  memberIds: string[];
+};
+
+export type CategorySettings = {
+  categories: string[];
+  budgetItemLabels: Record<BudgetItemKey, string>;
+};
+
 export type LedgerStoreV1 = {
   version: 1;
   updatedAt: string;
   entries: LedgerEntry[];
   netWorth: NetWorthSnapshot | null;
   importLog: ImportRecord[];
+  budgetPlan: BudgetPlan;
+  budgetPlans: SavedBudgetPlan[];
+  activeBudgetPlanId: string | null;
+  categorySettings: CategorySettings;
+  settlementGroups: SettlementGroup[];
 };
 
 export function getLedgerStorePath(): string {
@@ -39,6 +62,14 @@ function emptyStore(): LedgerStoreV1 {
     entries: [],
     netWorth: null,
     importLog: [],
+    budgetPlan: emptyBudgetPlan(),
+    budgetPlans: [],
+    activeBudgetPlanId: null,
+    categorySettings: {
+      categories: ["목적자금", "세금", "가구/가전"],
+      budgetItemLabels: { ...DEFAULT_BUDGET_ITEM_LABELS },
+    },
+    settlementGroups: [],
   };
 }
 
@@ -48,11 +79,89 @@ export async function readLedgerStore(): Promise<LedgerStoreV1> {
     const raw = await readFile(p, "utf8");
     const j = JSON.parse(raw) as LedgerStoreV1;
     if (j.version !== 1 || !Array.isArray(j.entries)) return emptyStore();
+    const rawBudget = j.budgetPlan as unknown as
+      | {
+          startDate?: string;
+          endDate?: string;
+          fixedSalary?: number;
+          amounts?: Record<string, number>;
+          categoryMappings?: Record<string, string>;
+        }
+      | undefined;
+    const rawAmounts = rawBudget?.amounts ?? {};
+    const categoryMappings = Object.fromEntries(
+      Object.entries(rawBudget?.categoryMappings ?? {}).map(([category, item]) => [
+        category,
+        item === "investment" || item === "installmentSavings" || item === "savings"
+          ? "investmentSavings"
+          : item,
+      ])
+    ) as BudgetPlan["categoryMappings"];
+    const normalizedBudget: BudgetPlan = {
+      ...emptyBudgetPlan(),
+      ...(rawBudget ?? {}),
+      fixedSalary: Number(rawBudget?.fixedSalary ?? 0),
+      amounts: {
+        ...emptyBudgetPlan().amounts,
+        ...rawAmounts,
+        investmentSavings:
+          rawAmounts.investmentSavings ??
+          (Number(rawAmounts.investment ?? 0) +
+            Number(rawAmounts.installmentSavings ?? 0) +
+            Number(rawAmounts.savings ?? 0)),
+      },
+      categoryMappings,
+    };
+    const now = new Date().toISOString();
+    const rawPlans = Array.isArray(j.budgetPlans) ? j.budgetPlans : [];
+    const budgetPlans: SavedBudgetPlan[] =
+      rawPlans.length > 0
+        ? rawPlans.map((plan) => ({
+            ...emptyBudgetPlan(),
+            ...plan,
+            amounts: { ...emptyBudgetPlan().amounts, ...(plan.amounts ?? {}) },
+            categoryMappings: plan.categoryMappings ?? {},
+          }))
+        : normalizedBudget.startDate && normalizedBudget.endDate
+          ? [
+              {
+                ...normalizedBudget,
+                id: "legacy-budget-plan",
+                createdAt: now,
+                updatedAt: now,
+              },
+            ]
+          : [];
+    const categories = Array.from(
+      new Set([
+        "목적자금",
+        "세금",
+        "가구/가전",
+        ...((j.categorySettings?.categories ?? []) as string[]).map((category) =>
+          category === "가구가전" ? "가구/가전" : category
+        ),
+      ])
+    ).filter(Boolean);
     return {
       ...emptyStore(),
       ...j,
       entries: j.entries.map(normalizeEntryStatus),
       importLog: Array.isArray(j.importLog) ? j.importLog : [],
+      settlementGroups: Array.isArray(j.settlementGroups) ? j.settlementGroups : [],
+      budgetPlan: normalizedBudget,
+      budgetPlans,
+      activeBudgetPlanId:
+        j.activeBudgetPlanId ??
+        (budgetPlans.length === 1 && budgetPlans[0].id === "legacy-budget-plan"
+          ? "legacy-budget-plan"
+          : null),
+      categorySettings: {
+        categories,
+        budgetItemLabels: {
+          ...DEFAULT_BUDGET_ITEM_LABELS,
+          ...(j.categorySettings?.budgetItemLabels ?? {}),
+        },
+      },
     };
   } catch {
     return emptyStore();
@@ -100,6 +209,11 @@ export function storeToResponse(store: LedgerStoreV1) {
     netWorth: store.netWorth,
     updatedAt: store.updatedAt,
     importLog: store.importLog.slice(-30).reverse(),
+    budgetPlan: store.budgetPlan,
+    budgetPlans: store.budgetPlans,
+    activeBudgetPlanId: store.activeBudgetPlanId,
+    categorySettings: store.categorySettings,
+    settlementGroups: store.settlementGroups,
     persistPath: "data/.moneygrow/ledger-state.json",
   };
 }
@@ -134,6 +248,11 @@ export function applySyncToStore(
     entries,
     netWorth,
     importLog: log.slice(-200),
+    budgetPlan: prev.budgetPlan,
+    budgetPlans: prev.budgetPlans,
+    activeBudgetPlanId: prev.activeBudgetPlanId,
+    categorySettings: prev.categorySettings,
+    settlementGroups: prev.settlementGroups,
   };
 }
 
@@ -165,5 +284,10 @@ export function applyUploadToStore(
     entries,
     netWorth: prev.netWorth,
     importLog: log.slice(-200),
+    budgetPlan: prev.budgetPlan,
+    budgetPlans: prev.budgetPlans,
+    activeBudgetPlanId: prev.activeBudgetPlanId,
+    categorySettings: prev.categorySettings,
+    settlementGroups: prev.settlementGroups,
   };
 }

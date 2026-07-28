@@ -7,12 +7,16 @@ export type LedgerEntry = {
   time: string;
   txType: string;
   categoryMain: string;
+  /** 사용자가 앱에서 수정한 대분류. 원본 동기화 키에는 포함하지 않습니다. */
+  categoryMainOverride?: string;
   categorySub: string;
   description: string;
   amount: number;
   currency: string;
   paymentMethod: string;
   note: string;
+  /** 사용자가 앱에서 추가한 메모. 원본 동기화 키에는 포함하지 않습니다. */
+  noteOverride?: string;
   /** 가계부 출처(예: 서정, 상윤). 단일 업로드는 빈 문자열. */
   sourceLabel: string;
   /**
