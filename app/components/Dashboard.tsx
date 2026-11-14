@@ -704,25 +704,22 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               MoneyGrow · 부부 공동 대시보드
             </p>
             <h1 className="text-2xl font-semibold text-zinc-900">{householdLabel}</h1>
-            {fileLabel ? (
-              <p className="mt-1 text-sm text-zinc-500">데이터: {fileLabel}</p>
-            ) : (
-              <p className="mt-1 text-sm text-zinc-500">
-                동기화로 폴더 엑셀을 반영(누적)하거나, 파일을 업로드하세요.
-              </p>
-            )}
-            {persistInfo.updatedAt ? (
-              <p className="mt-1 text-xs text-zinc-400">
-                서버 저장 {persistInfo.path ?? "data/.moneygrow/ledger-state.json"} · 마지막 반영{" "}
-                {new Date(persistInfo.updatedAt).toLocaleString("ko-KR", {
-                  dateStyle: "short",
-                  timeStyle: "short",
-                })}
-              </p>
-            ) : null}
-            <p className="mt-1 text-xs text-zinc-400">
-              새 엑셀에서는 저장소에 없던 거래만 붙습니다. 예전에 쌓인 행·앱에서만 넣은 메모(추후)는 같은
-              키가 아니면 유지되며, 엑셀에서 사라진 거래는 자동으로 지우지 않습니다.
+            <p className="mt-1 text-sm text-zinc-500">
+              {persistInfo.updatedAt
+                ? `마지막 반영 ${new Date(persistInfo.updatedAt).toLocaleString("ko-KR", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}`
+                : "동기화하거나 엑셀을 올려 주세요"}
+              <InfoBadge
+                text={
+                  <>
+                    동기화하면 뱅크샐러드 엑셀에서 새 거래만 더해요. 직접 고친 분류·메모는 그대로이고, 엑셀에서
+                    빠진 거래도 지우지 않아요.
+                    {fileLabel ? <span className="mt-1 block text-zinc-300">불러온 파일: {fileLabel}</span> : null}
+                  </>
+                }
+              />
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -805,10 +802,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             ) : null}
             <div className={activeTab === "settings" ? "contents" : "hidden"}>
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-semibold text-zinc-800">분류 설정</h2>
-              <p className="text-sm text-zinc-500">
-                거래에서 사용할 대분류와 예산 항목의 표시 이름을 관리합니다.
-              </p>
+              <h2 className="text-lg font-semibold text-zinc-800">
+                분류 설정
+                <InfoBadge text="거래에 쓸 대분류를 추가하거나 이름을 바꿔요. 예산 항목 이름도 여기서 바꿔요." />
+              </h2>
               <div className="mt-5 flex gap-2">
                 <input
                   type="text"
@@ -876,7 +873,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {BUDGET_ITEM_KEYS.map((key) => (
                   <label key={key} className="text-xs text-zinc-500">
-                    {key}
+                    기본 이름: {DEFAULT_BUDGET_ITEM_LABELS[key]}
                     <input
                       type="text"
                       defaultValue={budgetItemLabels[key]}
@@ -895,11 +892,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   </label>
                 ))}
               </div>
-              <h3 className="mt-6 text-sm font-semibold text-zinc-800">여행 기간</h3>
-              <p className="mt-1 text-xs text-zinc-500">
-                기간 안의 지출(식비·교통·쇼핑 등)을 여행/숙박으로 집계합니다. 주거·금융·저축·투자·세금·목적자금·가구/가전과
-                직접 바꾼 대분류는 그대로 둡니다.
-              </p>
+              <h3 className="mt-6 text-sm font-semibold text-zinc-800">
+                여행 기간
+                <InfoBadge text="여행 기간에 쓴 식비·교통·쇼핑 등은 여행/숙박으로 계산해서 예산에서 빠져요. 월세·대출·보험·저축·투자·목적자금과 직접 바꾼 분류는 그대로예요." />
+              </h3>
               <div className="mt-3 flex flex-wrap gap-2">
                 <input
                   type="text"
@@ -966,11 +962,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-zinc-800">대분류 표시</h2>
-                  <p className="text-sm text-zinc-500">
-                    체크 해제한 대분류는 차트·지출 TOP·거래내역 집계에서 제외됩니다. 순자산 카드는 엑셀
-                    스냅샷이라 그대로입니다.
-                  </p>
+                  <h2 className="text-lg font-semibold text-zinc-800">
+                    대분류 표시
+                    <InfoBadge text="체크를 끈 대분류는 차트·지출 TOP·거래내역에서 빠져요. 순자산은 바뀌지 않아요." />
+                  </h2>
                 </div>
                 {filterActive ? (
                   <button
@@ -1065,10 +1060,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
               <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-zinc-800">예산 계획</h2>
-                  <p className="text-sm text-zinc-500">
-                    월 예산과 기간 누적 예산을 정하고, 각 가계부 대분류를 예산 항목에 연결합니다.
-                  </p>
+                  <h2 className="text-lg font-semibold text-zinc-800">
+                    예산 계획
+                    <InfoBadge text="기간과 항목별 금액을 정하고, 어떤 대분류를 어느 예산 항목으로 셀지 연결해요." />
+                  </h2>
                 </div>
                 <button
                   type="button"
@@ -1109,10 +1104,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-zinc-800">월 예산 범위</h3>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    적용 기간 동안 매달 사용할 항목별 예산을 입력합니다.
-                  </p>
+                  <h3 className="text-sm font-semibold text-zinc-800">
+                    월 예산
+                    <InfoBadge text="매달 새로 시작하는 예산이에요. 남은 돈은 다음 달로 넘어가지 않아요." />
+                  </h3>
                 </div>
               </div>
 
@@ -1154,10 +1149,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               </div>
 
               <div className="mt-7">
-                <h3 className="text-sm font-semibold text-zinc-800">누적·이월 예산</h3>
-                <p className="mt-1 text-xs text-zinc-500">
-                  월 예산을 시작월부터 현재월까지 누적합니다. 사용하지 않은 금액은 다음 달로 이월됩니다.
-                </p>
+                <h3 className="text-sm font-semibold text-zinc-800">
+                  누적·이월 예산
+                  <InfoBadge text="매달 금액이 쌓이고, 덜 쓴 돈은 다음 달로 넘어가요." />
+                </h3>
               </div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 {rolloverBudgetProgress.map(
@@ -1205,10 +1200,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               </div>
 
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-zinc-800">대분류 매핑</h3>
-                <p className="mt-1 text-xs text-zinc-500">
-                  매핑하지 않은 대분류는 예산 달성률 계산에 포함되지 않습니다.
-                </p>
+                <h3 className="text-sm font-semibold text-zinc-800">
+                  대분류 연결
+                  <InfoBadge text="연결하지 않은 대분류(여행/숙박·목적자금·가구/가전 등)는 예산 집행률에서 빠져요." />
+                </h3>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {allMainCategories.map((category) => (
                     <label
@@ -1246,10 +1241,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </section>
 
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-semibold text-zinc-800">저장된 예산</h2>
-              <p className="text-sm text-zinc-500">
-                기간별 예산을 열어보거나 기존 설정을 새 기간에 복제해 재사용할 수 있습니다.
-              </p>
+              <h2 className="text-lg font-semibold text-zinc-800">
+                저장된 예산
+                <InfoBadge text="지난 예산을 열어보거나, 같은 설정을 새 기간으로 복사할 수 있어요." />
+              </h2>
               <div className="mt-4 space-y-3">
                 {[...budgetPlans]
                   .sort((a, b) => b.startDate.localeCompare(a.startDate))
@@ -1410,42 +1405,45 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             <div className={activeTab === "home" ? "contents" : "hidden"}>
             <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
-                label="엑셀 기준 순자산"
+                label="순자산"
                 value={netWorth ? formatWon(netWorth.netWorth) : "—"}
-                hint="재무현황 합산 · 동기화 시 서정+상윤 스냅샷 합침"
+                hint="뱅크샐러드 자산 현황(서정+상윤)을 마지막으로 동기화한 시점의 자산 − 부채예요."
               />
               <StatCard
                 label="자산 합계"
                 value={netWorth ? formatWon(netWorth.totalAssets) : "—"}
-                hint="뱅크샐 시트 파싱"
+                hint="뱅크샐러드 자산 현황의 계좌·투자·부동산 등을 합친 금액이에요."
               />
               <StatCard
                 label="부채 합계"
                 value={netWorth ? formatWon(netWorth.totalDebt) : "—"}
-                hint="부채 금액 컬럼"
+                hint="뱅크샐러드 자산 현황의 대출 합계예요."
               />
               <StatCard
                 label="거래 건수"
                 value={`${visibleEntries.length.toLocaleString("ko-KR")}건`}
-                hint={
-                  filterActive
-                    ? `숨김·제외 대분류 반영 · 저장소 ${ledger.length.toLocaleString("ko-KR")}건`
-                    : `숨김 거래 제외 · 저장소 ${ledger.length.toLocaleString("ko-KR")}건`
-                }
+                hint={`${filterActive ? "숨긴 거래와 꺼둔 대분류" : "숨긴 거래"}를 뺀 건수예요. 저장된 전체 거래는 ${ledger.length.toLocaleString("ko-KR")}건이에요.`}
               />
             </section>
 
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-zinc-800">예산 집행률</h2>
-                  <p className="text-sm text-zinc-500">
-                    {monthPlan
-                      ? `${monthPlan.startDate} ~ ${monthPlan.endDate} 적용 예산 · 소비 항목은 환불을 뺀 순사용액`
-                      : budgetPlans.length > 0
-                        ? "이 달에 적용된 예산이 없습니다. 설정에서 기간을 추가해 주세요."
-                        : "설정에서 예산 기간과 금액을 먼저 저장해 주세요."}
-                  </p>
+                  <h2 className="text-lg font-semibold text-zinc-800">
+                    예산 집행률
+                    {monthPlan ? (
+                      <InfoBadge
+                        text={`${monthPlan.startDate} ~ ${monthPlan.endDate} 예산 기준이에요. 환불은 쓴 돈에서 빼고, 투자·적금은 넣은 금액만 세요.`}
+                      />
+                    ) : null}
+                  </h2>
+                  {monthPlan ? null : (
+                    <p className="text-sm text-zinc-500">
+                      {budgetPlans.length > 0
+                        ? "이 달에 적용된 예산이 없어요. 설정에서 기간을 추가해 주세요."
+                        : "설정에서 예산을 먼저 만들어 주세요."}
+                    </p>
+                  )}
                 </div>
                 <label className="text-sm text-zinc-600">
                   조회 월
@@ -1535,11 +1533,22 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
             <section className="grid gap-8 lg:grid-cols-3">
               <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm lg:col-span-2">
-                <h2 className="text-lg font-semibold text-zinc-800">월별 입금 · 지출</h2>
-                <p className="text-sm text-zinc-500">
-                  내 계좌·부부 간 이체와 카드대금은 제외 · 지출은 환불을 뺀 순액 · 자산형성은 투자·저축 납입에서 회수액을 뺀 순액
-                  {filterActive ? " · 숨긴 대분류 제외" : ""}
-                </p>
+                <h2 className="text-lg font-semibold text-zinc-800">
+                  월별 수입 · 지출
+                  <InfoBadge
+                    text={
+                      <>
+                        <span className="block font-semibold">빼고 계산하는 것</span>
+                        <span className="block">· 내 계좌끼리 옮긴 돈(내계좌이체)</span>
+                        <span className="block">· 서정 ↔ 상윤 사이 이체</span>
+                        <span className="block">· 카드대금 (카드 쓴 날 지출로 이미 잡혀요)</span>
+                        {filterActive ? <span className="block">· 대분류 표시에서 꺼둔 대분류</span> : null}
+                        <span className="mt-1 block">지출은 환불을 뺀 금액이에요.</span>
+                        <span className="block">자산형성 = 투자·저축에 넣은 돈 − 찾은 돈</span>
+                      </>
+                    }
+                  />
+                </h2>
                 <div className="mt-4 h-72 w-full min-w-0">
                   {chartData.length === 0 ? (
                     <p className="flex h-full items-center justify-center text-sm text-zinc-400">
@@ -1572,10 +1581,12 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               </div>
 
               <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-zinc-800">지출 대분류 TOP</h2>
-                <p className="text-xs text-zinc-400">
-                  {filterActive ? "숨긴 대분류 제외" : "표시 중인 거래만"}
-                </p>
+                <h2 className="text-lg font-semibold text-zinc-800">
+                  지출 대분류 TOP
+                  <InfoBadge
+                    text={`이체·카드대금·투자·저축을 뺀 실제 지출을, 환불을 빼고 큰 순서로 보여줘요.${filterActive ? " 꺼둔 대분류는 빠져요." : ""}`}
+                  />
+                </h2>
                 <ul className="mt-4 space-y-2">
                   {topCategories.map(([name, amt]) => (
                     <li
@@ -1596,11 +1607,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </section>
 
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-semibold text-zinc-800">월별 순현금흐름</h2>
-              <p className="text-sm text-zinc-500">
-                해당 월 수입 − 지출 (자산형성 전, 저축 여력)
-                {filterActive ? " · 숨긴 대분류 제외" : ""}
-              </p>
+              <h2 className="text-lg font-semibold text-zinc-800">
+                월별 남은 돈
+                <InfoBadge text="그 달 수입 − 지출이에요. 투자·저축에 넣기 전, 모을 수 있었던 돈이에요." />
+              </h2>
               <div className="mt-4 h-64 w-full min-w-0">
                 {chartData.length === 0 ? (
                   <p className="flex h-full items-center justify-center text-sm text-zinc-400">
@@ -1635,10 +1645,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </section>
 
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-semibold text-zinc-800">순자산 추이</h2>
-              <p className="text-sm text-zinc-500">
-                엑셀을 내려받은 날짜별 서정+상윤 재무현황 합계 · 동기화하면 data 폴더의 파일이 모두 기록됩니다
-              </p>
+              <h2 className="text-lg font-semibold text-zinc-800">
+                순자산 추이
+                <InfoBadge text="엑셀을 내려받은 날마다 뱅크샐러드 자산 현황(서정+상윤)을 기록해요. 동기화하면 data 폴더의 엑셀이 모두 반영돼요." />
+              </h2>
               <div className="mt-4 h-64 w-full min-w-0">
                 {netWorthHistory.length === 0 ? (
                   <p className="flex h-full items-center justify-center text-sm text-zinc-400">
@@ -1683,8 +1693,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
             {netWorth && netWorth.assets.length > 0 ? (
               <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-zinc-800">재무 스냅샷 — 자산 라인</h2>
-                <p className="text-sm text-zinc-500">엑셀보낸 시점 기준(라인 합산)</p>
+                <h2 className="text-lg font-semibold text-zinc-800">
+                  자산 상세
+                  <InfoBadge text="마지막으로 동기화한 뱅크샐러드 자산 현황의 계좌·상품별 금액이에요." />
+                </h2>
                 <div className="mt-4 max-h-64 overflow-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="sticky top-0 bg-white text-xs text-zinc-500">
@@ -1720,10 +1732,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-zinc-800">거래내역</h2>
-                  <p className="text-sm text-zinc-500">
-                    표시 대분류·숨기지 않은 거래만 집계에 포함 · 기본 월은 현재 달
-                  </p>
+                  <h2 className="text-lg font-semibold text-zinc-800">
+                    거래내역
+                    <InfoBadge text="숨긴 거래와 꺼둔 대분류는 합계에서 빠져요." />
+                  </h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {settlementMode ? (
@@ -2058,11 +2070,9 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               {hiddenRowsForMonth.length > 0 ? (
                 <div className="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3">
                   <h3 className="text-sm font-semibold text-zinc-700">
-                    숨긴 거래 ({hiddenRowsForMonth.length}건) — 합계·차트 미포함
+                    숨긴 거래 ({hiddenRowsForMonth.length}건)
+                    <InfoBadge text="합계·차트에서 빠진 거래예요. 복구하면 다시 들어가요." />
                   </h3>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    동일 달·동일 대분류 필터 기준입니다. 복구하면 집계에 다시 포함됩니다.
-                  </p>
                   <div className="mt-3 overflow-x-auto">
                     <table className="w-full min-w-[820px] text-left text-sm text-zinc-600">
                       <thead className="text-xs text-zinc-500">
@@ -2146,9 +2156,32 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="text-xs font-medium text-zinc-500">
+        {label}
+        <InfoBadge text={hint} />
+      </p>
       <p className="mt-2 text-xl font-semibold tabular-nums text-zinc-900">{value}</p>
-      <p className="mt-1 text-xs text-zinc-400">{hint}</p>
     </div>
+  );
+}
+
+/** 설명 문구는 화면에 늘어놓지 않고 ? 배지에 올리면(또는 키보드로 포커스하면) 보여줍니다. */
+function InfoBadge({ text }: { text: React.ReactNode }) {
+  return (
+    <span className="group relative ml-1.5 inline-flex align-middle">
+      <span
+        tabIndex={0}
+        aria-label="설명 보기"
+        className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-zinc-300 text-[10px] font-semibold text-zinc-500 hover:border-emerald-600 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+      >
+        ?
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg bg-zinc-900 px-3 py-2 text-left text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
+      >
+        {text}
+      </span>
+    </span>
   );
 }
