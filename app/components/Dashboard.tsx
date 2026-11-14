@@ -356,13 +356,19 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
   const calendarHiddenSet = useMemo(() => new Set(calendarHidden), [calendarHidden]);
   /** 달력용 거래: 숨김 거래, 달력 필터에서 끈 대분류, 전액 환불된 결제와 그 환불을 뺍니다. */
+  /** 전액 환불·취소로 짝지어진 결제와 환불의 id(달력에서는 숨기고, 상세내역에서는 결제에 취소선) */
+  const refundedIds = useMemo(
+    () => refundedPairIds(ledgerWithSettlements.filter(isLedgerEntryCounted)),
+    [ledgerWithSettlements]
+  );
+
   const calendarEntries = useMemo(() => {
-    const refunded = refundedPairIds(ledgerWithSettlements.filter(isLedgerEntryCounted));
+    const refunded = refundedIds;
     return ledgerWithSettlements
       .filter(isLedgerEntryCounted)
       .filter((e) => !(e.id && refunded.has(e.id)))
       .filter((e) => !calendarHiddenSet.has(mainCategoryOf(e)));
-  }, [ledgerWithSettlements, calendarHiddenSet]);
+  }, [ledgerWithSettlements, calendarHiddenSet, refundedIds]);
 
   const flowKind = useCallback(
     (entry: LedgerEntry) =>
@@ -1734,8 +1740,11 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                               </td>
                               <td
                                 className={`whitespace-nowrap py-2 text-right tabular-nums font-medium ${
-                                  amountColor(e)
+                                  e.amount < 0 && e.id && refundedIds.has(e.id)
+                                    ? "text-zinc-400 line-through"
+                                    : amountColor(e)
                                 }`}
+                                title={e.amount < 0 && e.id && refundedIds.has(e.id) ? "전액 환불된 결제" : undefined}
                               >
                                 {formatWon(e.amount)}
                               </td>
