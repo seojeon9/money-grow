@@ -1604,7 +1604,14 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                     {" · "}
                     {budgetFilter.map(budgetFilterLabel).join(", ")} 순사용{" "}
                     <span className="font-medium tabular-nums text-zinc-900">
-                      {formatWon(-ledgerRowsForMonth.reduce((sum, e) => sum + e.amount, 0))}
+                      {formatWon(
+                        // 홈과 같은 계산: 환불(+)은 빼고, 투자·적금·저금은 넣은 돈(−)만 셉니다.
+                        -ledgerRowsForMonth.reduce(
+                          (sum, e) =>
+                            budgetItemOfEntry(e) === "investmentSavings" && e.amount > 0 ? sum : sum + e.amount,
+                          0
+                        )
+                      )}
                     </span>
                   </>
                 ) : null}
