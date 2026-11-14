@@ -12,6 +12,30 @@ type FlowKind = "internal" | "asset" | "income" | "spend";
 const INCOME_GRACE_DAYS = 7;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
+/** 달력 스티커: 파스텔 동그라미 + 선 아이콘(lucide 모양, 기기마다 같은 모양) */
+const STICKERS: Record<string, { className: string; path: string }> = {
+  외식: {
+    className: "bg-orange-100 text-orange-600",
+    path: "M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7",
+  },
+  배달: {
+    className: "bg-sky-100 text-sky-600",
+    path: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.3 7 12 12l8.7-5M12 22V12",
+  },
+};
+
+function Sticker({ label }: { label: string }) {
+  const s = STICKERS[label];
+  if (!s) return null;
+  return (
+    <span title={label} className={`flex h-4 w-4 items-center justify-center rounded-full ${s.className}`}>
+      <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d={s.path} />
+      </svg>
+    </span>
+  );
+}
+
 const won = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`;
 
 function addDays(iso: string, days: number): string {
@@ -84,11 +108,9 @@ export default function CalendarTab({
     for (const e of dayEntries) {
       if (flowKind(e) !== "spend") continue;
       for (const label of entryLabelsOf(e)) {
-        const sticker = ENTRY_LABELS.find((l) => l.name === label && "sticker" in l);
-        if (sticker && "sticker" in sticker) {
-          if (!m.has(e.date)) m.set(e.date, new Set());
-          m.get(e.date)!.add(sticker.sticker);
-        }
+        if (!STICKERS[label]) continue;
+        if (!m.has(e.date)) m.set(e.date, new Set());
+        m.get(e.date)!.add(label);
       }
     }
     return m;
@@ -221,10 +243,8 @@ export default function CalendarTab({
                   <span className={`tabular-nums ${date === todayIso() ? "font-bold text-emerald-700" : "text-zinc-600"}`}>
                     {Number(date.slice(8))}
                   </span>
-                  {Array.from(stickersByDate.get(date) ?? []).map((sticker) => (
-                    <span key={sticker} className="text-sm leading-none" aria-hidden="true">
-                      {sticker}
-                    </span>
+                  {Array.from(stickersByDate.get(date) ?? []).map((label) => (
+                    <Sticker key={label} label={label} />
                   ))}
                 </span>
                 {dayEvents.map((e) => (

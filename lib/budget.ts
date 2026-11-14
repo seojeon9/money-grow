@@ -197,15 +197,15 @@ export function refundedPairIds(entries: LedgerEntry[]): Set<string> {
   return paired;
 }
 
-/** 가계부 라벨. 달력에 스티커로 보여줄 라벨에는 sticker가 있습니다. */
+/** 가계부 라벨. 외식·배달은 달력에 스티커로 보여줍니다(CalendarTab의 STICKERS). */
 export const ENTRY_LABELS = [
-  { name: "외식", sticker: "🍽️" },
-  { name: "배달", sticker: "🛵" },
+  { name: "외식" },
+  { name: "배달" },
   { name: "점심" },
   { name: "커피" },
   { name: "디저트" },
   { name: "편의점" },
-] as const satisfies readonly { name: string; sticker?: string }[];
+] as const;
 
 const EATING_OUT_SUBS = new Set(["한식", "일식", "중식", "양식", "고기", "아시아음식", "뷔페", "피자", "치킨", "패스트푸드"]);
 const DESSERT_SUBS = new Set(["베이커리", "디저트/떡", "아이스크림/빙수", "도넛/핫도그"]);
