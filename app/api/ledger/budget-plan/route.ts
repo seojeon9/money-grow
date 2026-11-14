@@ -23,12 +23,10 @@ export async function POST(req: Request) {
   }
 
   const startDate = typeof body.startDate === "string" ? body.startDate : "";
-  const endDate = typeof body.endDate === "string" ? body.endDate : "";
-  if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate) || startDate > endDate) {
-    return NextResponse.json(
-      { error: "올바른 시작일과 종료일을 입력해 주세요." },
-      { status: 400 }
-    );
+  // 종료일은 두지 않습니다. 다음 예산이 시작되기 전날까지 이어집니다.
+  const endDate = "";
+  if (!DATE_RE.test(startDate)) {
+    return NextResponse.json({ error: "올바른 시작일을 입력해 주세요." }, { status: 400 });
   }
 
   const fixedSalary = Number(body.fixedSalary ?? 0);
@@ -53,6 +51,9 @@ export async function POST(req: Request) {
   }
 
   const store = await readLedgerStore();
+  if (store.budgetPlans.some((plan) => plan.startDate === startDate && plan.id !== body.id)) {
+    return NextResponse.json({ error: "같은 날 시작하는 예산이 이미 있어요." }, { status: 400 });
+  }
   const now = new Date().toISOString();
   const existing = body.id
     ? store.budgetPlans.find((plan) => plan.id === body.id)
@@ -74,6 +75,26 @@ export async function POST(req: Request) {
     ...store,
     budgetPlans,
     activeBudgetPlanId: plan.id,
+  });
+  return NextResponse.json(storeToResponse(saved));
+}
+
+export async function DELETE(req: Request) {
+  let body: { id?: string };
+  try {
+    body = (await req.json()) as { id?: string };
+  } catch {
+    return NextResponse.json({ error: "JSON 본문이 필요합니다." }, { status: 400 });
+  }
+  const store = readLedgerStore();
+  const budgetPlans = store.budgetPlans.filter((plan) => plan.id !== body.id);
+  if (budgetPlans.length === store.budgetPlans.length) {
+    return NextResponse.json({ error: "예산을 찾을 수 없습니다." }, { status: 404 });
+  }
+  const saved = writeLedgerStore({
+    ...store,
+    budgetPlans,
+    activeBudgetPlanId: store.activeBudgetPlanId === body.id ? null : store.activeBudgetPlanId,
   });
   return NextResponse.json(storeToResponse(saved));
 }

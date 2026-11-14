@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { mainCategoryOf, type Trip } from "@/lib/budget";
 import { isLedgerEntryCounted, type LedgerEntry } from "@/lib/excel/importBankExport";
 import type { SettlementGroup } from "@/lib/store/ledgerStore";
+import InfoBadge from "./InfoBadge";
 
 type FlowKind = "internal" | "asset" | "income" | "spend";
 
@@ -22,26 +23,6 @@ function addDays(iso: string, days: number): string {
 function todayIso(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function InfoBadge({ text }: { text: string }) {
-  return (
-    <span className="group relative ml-1.5 inline-flex align-middle">
-      <span
-        tabIndex={0}
-        aria-label="설명 보기"
-        className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-zinc-300 text-[10px] font-semibold text-zinc-500 hover:border-emerald-600 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-600"
-      >
-        ?
-      </span>
-      <span
-        role="tooltip"
-        className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg bg-zinc-900 px-3 py-2 text-left text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
-      >
-        {text}
-      </span>
-    </span>
-  );
 }
 
 export default function CalendarTab({

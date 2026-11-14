@@ -26,8 +26,8 @@ import {
   type BudgetItemKey,
   type BudgetPlan,
   type SavedBudgetPlan,
+  budgetPlanEndDate,
   budgetPlanForMonth,
-  emptyBudgetPlan,
   flowKindOf,
   HOUSEHOLD_MEMBERS,
   mainCategoryOf,
@@ -36,7 +36,9 @@ import {
   type CategoryRule,
 } from "@/lib/budget";
 import type { CategorySettings, NetWorthPoint, SettlementGroup } from "@/lib/store/ledgerStore";
+import BudgetSettings from "./BudgetSettings";
 import CalendarTab from "./CalendarTab";
+import InfoBadge from "./InfoBadge";
 
 type LedgerApiPayload = {
   ledger?: LedgerEntry[];
@@ -44,16 +46,19 @@ type LedgerApiPayload = {
   summaryLabel?: string;
   updatedAt?: string;
   persistPath?: string;
-  budgetPlan?: BudgetPlan;
   settlementGroups?: SettlementGroup[];
   budgetPlans?: SavedBudgetPlan[];
-  activeBudgetPlanId?: string | null;
   categorySettings?: CategorySettings;
   netWorthHistory?: NetWorthPoint[];
   error?: string;
 };
 
 const DEFAULT_HIDDEN_MAIN_CATEGORIES: string[] = [];
+/** 가계부(달력) 기본 필터: 고정비·자산 이동·일회성 목돈·수입은 빼고 생활 지출만 봅니다. */
+const DEFAULT_CALENDAR_HIDDEN: string[] = [
+  "주거/통신", "금융", "세금", "주택자금", "증여", "투자", "저축",
+  "내계좌이체", "카드대금", "목적자금", "가구/가전", "급여", "금융수입",
+];
 const MONTHLY_BUDGET_KEYS: BudgetItemKey[] = [
   "living",
   "housing",
@@ -74,23 +79,6 @@ function localTodayIso(): string {
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
     today.getDate()
   ).padStart(2, "0")}`;
-}
-
-function reusedPeriodDates(plan: SavedBudgetPlan): { startDate: string; endDate: string } {
-  const sourceStart = new Date(`${plan.startDate}T00:00:00`);
-  const sourceEnd = new Date(`${plan.endDate}T00:00:00`);
-  const durationDays = Math.max(
-    0,
-    Math.round((sourceEnd.getTime() - sourceStart.getTime()) / 86400000)
-  );
-  const startDate = localTodayIso();
-  const nextEnd = new Date(`${startDate}T00:00:00`);
-  nextEnd.setDate(nextEnd.getDate() + durationDays);
-  const endDate = `${nextEnd.getFullYear()}-${String(nextEnd.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}-${String(nextEnd.getDate()).padStart(2, "0")}`;
-  return { startDate, endDate };
 }
 
 const won = new Intl.NumberFormat("ko-KR", {
@@ -146,9 +134,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   } | null>(null);
   const [categoryBusyId, setCategoryBusyId] = useState<string | null>(null);
   const [noteBusyId, setNoteBusyId] = useState<string | null>(null);
-  const [budgetPlan, setBudgetPlan] = useState<BudgetPlan>(emptyBudgetPlan);
   const [budgetPlans, setBudgetPlans] = useState<SavedBudgetPlan[]>([]);
-  const [activeBudgetPlanId, setActiveBudgetPlanId] = useState<string | null>(null);
   const [configuredCategories, setConfiguredCategories] = useState<string[]>([
     "목적자금",
     "세금",
@@ -158,16 +144,13 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     ...DEFAULT_BUDGET_ITEM_LABELS,
   });
   const [budgetBusy, setBudgetBusy] = useState(false);
-  const [budgetSaved, setBudgetSaved] = useState(false);
   const [budgetMonth, setBudgetMonth] = useState<string>(currentMonthKey);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [trips, setTrips] = useState<Trip[]>([]);
   const [rules, setRules] = useState<CategoryRule[]>([]);
+  const [calendarHidden, setCalendarHidden] = useState<string[]>(DEFAULT_CALENDAR_HIDDEN);
   const [ruleDraft, setRuleDraft] = useState({ match: "", category: "" });
   const [settingsBusy, setSettingsBusy] = useState(false);
-  const [expandedBudgetPlanId, setExpandedBudgetPlanId] = useState<string | null>(null);
-  const [reusePlanId, setReusePlanId] = useState<string | null>(null);
-  const [reuseDates, setReuseDates] = useState({ startDate: "", endDate: "" });
 
   /** 서버 디스크 누적본 — 새로고침 후에도 유지 */
   useEffect(() => {
@@ -179,13 +162,12 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           setNetWorth(j.netWorth ?? null);
         setNetWorthHistory(j.netWorthHistory ?? []);
           setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
-          setBudgetPlan(j.budgetPlan ?? emptyBudgetPlan());
           setSettlementGroups(j.settlementGroups ?? []);
           setBudgetPlans(j.budgetPlans ?? []);
-          setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
           setConfiguredCategories(j.categorySettings?.categories ?? []);
         setTrips(j.categorySettings?.trips ?? []);
         setRules(j.categorySettings?.rules ?? []);
+        setCalendarHidden(j.categorySettings?.calendarHidden ?? DEFAULT_CALENDAR_HIDDEN);
           setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
           setFileLabel((prev) => prev ?? "저장된 누적 데이터");
         }
@@ -212,13 +194,12 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setNetWorthHistory(j.netWorthHistory ?? []);
         setFileLabel(j.summaryLabel ?? f.name);
         setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
-        setBudgetPlan(j.budgetPlan ?? emptyBudgetPlan());
         setSettlementGroups(j.settlementGroups ?? []);
         setBudgetPlans(j.budgetPlans ?? []);
-        setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
         setConfiguredCategories(j.categorySettings?.categories ?? []);
         setTrips(j.categorySettings?.trips ?? []);
         setRules(j.categorySettings?.rules ?? []);
+        setCalendarHidden(j.categorySettings?.calendarHidden ?? DEFAULT_CALENDAR_HIDDEN);
         setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
         if (!j.ledger?.length) {
           setError("가계부 시트를 찾지 못했거나 데이터가 없습니다. 엑셀 형식을 확인해 주세요.");
@@ -247,13 +228,12 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setNetWorthHistory(j.netWorthHistory ?? []);
         setFileLabel(j.summaryLabel ?? "동기화");
         setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
-        setBudgetPlan(j.budgetPlan ?? emptyBudgetPlan());
         setSettlementGroups(j.settlementGroups ?? []);
         setBudgetPlans(j.budgetPlans ?? []);
-        setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
         setConfiguredCategories(j.categorySettings?.categories ?? []);
         setTrips(j.categorySettings?.trips ?? []);
         setRules(j.categorySettings?.rules ?? []);
+        setCalendarHidden(j.categorySettings?.calendarHidden ?? DEFAULT_CALENDAR_HIDDEN);
         setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
         if (!j.ledger?.length) {
           setError("가계부 시트를 찾지 못했거나 데이터가 없습니다. 엑셀 형식을 확인해 주세요.");
@@ -361,9 +341,20 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       .filter((e) => !hiddenSet.has(mainCategoryOf(e)));
   }, [ledgerWithSettlements, hiddenSet]);
 
+  const calendarHiddenSet = useMemo(() => new Set(calendarHidden), [calendarHidden]);
+  /** 가계부(달력)용 거래: 숨김 거래와 가계부 필터에서 끈 대분류를 뺍니다. */
+  const calendarEntries = useMemo(
+    () =>
+      ledgerWithSettlements
+        .filter(isLedgerEntryCounted)
+        .filter((e) => !calendarHiddenSet.has(mainCategoryOf(e))),
+    [ledgerWithSettlements, calendarHiddenSet]
+  );
+
   const flowKind = useCallback(
-    (entry: LedgerEntry) => flowKindOf(entry, budgetPlan.categoryMappings),
-    [budgetPlan.categoryMappings]
+    (entry: LedgerEntry) =>
+      flowKindOf(entry, budgetPlanForMonth(budgetPlans, entry.date.slice(0, 7))?.categoryMappings ?? {}),
+    [budgetPlans]
   );
 
   const chartData = useMemo(() => {
@@ -432,24 +423,29 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     return Array.from(s).sort((a, b) => a.localeCompare(b, "ko"));
   }, [configuredCategories, ledger]);
 
+  /** 첫 예산 시작월부터 이번 달까지 */
   const budgetMonthOptions = useMemo(() => {
-    const months = new Set<string>();
-    for (const plan of budgetPlans) {
-      const cursor = new Date(`${plan.startDate.slice(0, 7)}-01T00:00:00`);
-      const end = new Date(`${plan.endDate.slice(0, 7)}-01T00:00:00`);
-      while (cursor <= end && months.size < 600) {
-        months.add(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
-        cursor.setMonth(cursor.getMonth() + 1);
-      }
+    const first = budgetPlans.map((p) => p.startDate.slice(0, 7)).filter(Boolean).sort()[0];
+    if (!first) return [budgetMonth];
+    const months: string[] = [];
+    const last = currentMonthKey();
+    for (let m = first; m <= last && months.length < 600; ) {
+      months.push(m);
+      const [y, mo] = m.split("-").map(Number);
+      m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
     }
-    if (months.size === 0) return [budgetMonth];
-    return Array.from(months).sort((a, b) => b.localeCompare(a));
+    return months.reverse();
   }, [budgetMonth, budgetPlans]);
 
   /** 조회 월이 속한 예산 계획(월마다 그 달에 적용된 예산으로 평가) */
   const monthPlan = useMemo(
     () => budgetPlanForMonth(budgetPlans, budgetMonth),
     [budgetMonth, budgetPlans]
+  );
+  /** monthPlan이 끝나는 날(다음 예산 전날). ""이면 진행 중. */
+  const monthPlanEnd = useMemo(
+    () => (monthPlan ? budgetPlanEndDate(budgetPlans, monthPlan) : ""),
+    [budgetPlans, monthPlan]
   );
 
   useEffect(() => {
@@ -466,7 +462,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     if (monthPlan) {
       for (const entry of ledgerWithSettlements) {
         if (!isLedgerEntryCounted(entry)) continue;
-        if (entry.date < monthPlan.startDate || entry.date > monthPlan.endDate) continue;
+        if (entry.date < monthPlan.startDate || (monthPlanEnd && entry.date > monthPlanEnd)) continue;
         if (!entry.date.startsWith(budgetMonth)) continue;
         const item = monthPlan.categoryMappings[mainCategoryOf(entry)];
         if (!item) continue;
@@ -486,102 +482,95 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         rate: budget > 0 ? (used / budget) * 100 : 0,
       };
     });
-  }, [budgetMonth, monthPlan, ledgerWithSettlements]);
+  }, [budgetMonth, monthPlan, monthPlanEnd, ledgerWithSettlements]);
 
+  /** 누적 예산: 조회 월의 예산 시작부터 그 달 말(또는 오늘·예산 끝)까지 쌓인 금액과 사용액 */
   const rolloverBudgetProgress = useMemo(() => {
-    const today = localTodayIso();
-    const cutoff =
-      !budgetPlan.endDate || today < budgetPlan.endDate ? today : budgetPlan.endDate;
-    const totalMonths = inclusiveMonthCount(budgetPlan.startDate, budgetPlan.endDate);
-    const elapsedMonths =
-      cutoff >= budgetPlan.startDate
-        ? Math.min(totalMonths, inclusiveMonthCount(budgetPlan.startDate, cutoff))
-        : 0;
+    const monthEnd = `${budgetMonth}-31`;
+    const cutoff = [localTodayIso(), monthEnd, monthPlanEnd || monthEnd].sort()[0];
+    const elapsedMonths = monthPlan && cutoff >= monthPlan.startDate ? inclusiveMonthCount(monthPlan.startDate, cutoff) : 0;
     const spent = Object.fromEntries(ROLLOVER_BUDGET_KEYS.map((key) => [key, 0])) as Record<
       BudgetItemKey,
       number
     >;
-
-    if (elapsedMonths > 0) {
+    if (monthPlan && elapsedMonths > 0) {
       for (const entry of ledgerWithSettlements) {
         if (!isLedgerEntryCounted(entry)) continue;
-        if (entry.date < budgetPlan.startDate || entry.date > cutoff) continue;
-        const item = budgetPlan.categoryMappings[mainCategoryOf(entry)];
-        if (item === "personal" || item === "emergency") {
-          spent[item] -= entry.amount;
-        }
+        if (entry.date < monthPlan.startDate || entry.date > cutoff) continue;
+        const item = monthPlan.categoryMappings[mainCategoryOf(entry)];
+        if (item === "personal" || item === "emergency") spent[item] -= entry.amount;
       }
     }
-
     return ROLLOVER_BUDGET_KEYS.map((key) => {
-      const monthlyBudget = budgetPlan.amounts[key];
-      const available = monthlyBudget * elapsedMonths;
+      const available = (monthPlan?.amounts[key] ?? 0) * elapsedMonths;
       const used = spent[key];
       return {
         key,
-        monthlyBudget,
-        planTotal: monthlyBudget * totalMonths,
         available,
         spent: used,
         carryover: available - used,
         rate: available > 0 ? (used / available) * 100 : 0,
         elapsedMonths,
-        totalMonths,
         cutoff,
       };
     });
-  }, [budgetPlan, ledgerWithSettlements]);
-
-  const salaryAllocation = useMemo(() => {
-    const allocated = BUDGET_ITEM_KEYS.reduce(
-      (sum, key) => sum + (budgetPlan.amounts[key] || 0),
-      0
-    );
-    return {
-      allocated,
-      remaining: budgetPlan.fixedSalary - allocated,
-      rate: budgetPlan.fixedSalary > 0 ? (allocated / budgetPlan.fixedSalary) * 100 : 0,
-    };
-  }, [budgetPlan.amounts, budgetPlan.fixedSalary]);
-
-  const saveBudgetPlan = useCallback(() => {
-    setBudgetBusy(true);
-    setBudgetSaved(false);
-    setError(null);
-    fetch("/api/ledger/budget-plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...budgetPlan, id: activeBudgetPlanId }),
-    })
-      .then(async (res) => {
-        const j = (await res.json()) as LedgerApiPayload;
-        if (!res.ok) throw new Error(j.error ?? res.statusText);
-        setBudgetPlan(j.budgetPlan ?? budgetPlan);
-        setBudgetPlans(j.budgetPlans ?? []);
-        setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
-        setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
-        setBudgetSaved(true);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setBudgetBusy(false));
-  }, [activeBudgetPlanId, budgetPlan]);
+  }, [budgetMonth, monthPlan, monthPlanEnd, ledgerWithSettlements]);
 
   const applySettingsPayload = useCallback((j: LedgerApiPayload) => {
     if (j.ledger) setLedger(j.ledger);
-    if (j.budgetPlan) setBudgetPlan(j.budgetPlan);
     setBudgetPlans(j.budgetPlans ?? []);
-    setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
     if (j.categorySettings) {
       setConfiguredCategories(j.categorySettings.categories);
       setTrips(j.categorySettings.trips ?? []);
       setRules(j.categorySettings.rules ?? []);
+      setCalendarHidden(j.categorySettings.calendarHidden ?? DEFAULT_CALENDAR_HIDDEN);
       setBudgetItemLabels(j.categorySettings.budgetItemLabels);
     }
     setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
   }, []);
 
+  /** 예산 저장(id 있으면 수정, 없으면 새 예산). 성공하면 true. */
+  const saveBudgetPlan = useCallback((plan: BudgetPlan, id: string | null) => {
+    setBudgetBusy(true);
+    setError(null);
+    return fetch("/api/ledger/budget-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...plan, id }),
+    })
+      .then(async (res) => {
+        const j = (await res.json()) as LedgerApiPayload;
+        if (!res.ok) throw new Error(j.error ?? res.statusText);
+        applySettingsPayload(j);
+        return true;
+      })
+      .catch((err: Error) => {
+        setError(err.message);
+        return false;
+      })
+      .finally(() => setBudgetBusy(false));
+  }, [applySettingsPayload]);
+
+  const deleteBudgetPlan = useCallback((id: string) => {
+    setBudgetBusy(true);
+    setError(null);
+    fetch("/api/ledger/budget-plan", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    })
+      .then(async (res) => {
+        const j = (await res.json()) as LedgerApiPayload;
+        if (!res.ok) throw new Error(j.error ?? res.statusText);
+        applySettingsPayload(j);
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setBudgetBusy(false));
+  }, [applySettingsPayload]);
+
+
   const updateCategorySettings = useCallback(
-    (body: Record<string, string>) => {
+    (body: Record<string, unknown>) => {
       setSettingsBusy(true);
       setError(null);
       return fetch("/api/ledger/category-settings", {
@@ -603,25 +592,13 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     [applySettingsPayload]
   );
 
-  const reuseBudgetPlan = useCallback(() => {
-    if (!reusePlanId) return;
-    setBudgetBusy(true);
-    setError(null);
-    fetch("/api/ledger/budget-plan/reuse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourcePlanId: reusePlanId, ...reuseDates }),
-    })
-      .then(async (res) => {
-        const j = (await res.json()) as LedgerApiPayload;
-        if (!res.ok) throw new Error(j.error ?? res.statusText);
-        applySettingsPayload(j);
-        setReusePlanId(null);
-        setReuseDates({ startDate: "", endDate: "" });
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setBudgetBusy(false));
-  }, [applySettingsPayload, reuseDates, reusePlanId]);
+  const saveCalendarHidden = useCallback(
+    (categories: string[]) => {
+      setCalendarHidden(categories);
+      void updateCategorySettings({ action: "calendar-hidden", categories });
+    },
+    [updateCategorySettings]
+  );
 
   const updateEntryCategory = useCallback((entry: LedgerEntry, categoryMain: string) => {
     if (!entry.id || settlementView.detailsByGroupId.has(entry.id)) return;
@@ -716,51 +693,50 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       .slice(0, 8);
   }, [flowKind, visibleEntries]);
 
-  const toggleCategoryVisible = useCallback((cat: string) => {
-    setHiddenMainCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
-    );
-  }, []);
 
   const filterActive = hiddenMainCategories.length > 0;
 
-  /** 보기 필터: 가계부·상세내역 탭에서 함께 씁니다(저장 안 됨). */
-  const viewFilter = (
+  /** 대분류 체크 목록(보기 필터). 가계부·상세내역이 각자 다른 상태를 넘깁니다. */
+  const renderFilter = (opts: {
+    hint: string;
+    hidden: Set<string>;
+    onChange: (hidden: string[]) => void;
+  }) => (
     <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-zinc-800">
-            보기 필터
-            <InfoBadge text="체크를 끈 대분류는 가계부 달력·상세내역과 홈 차트·지출 TOP에서 잠깐 빠져요. 저장되지 않아서 새로고침하면 다시 모두 보여요." />
-          </h2>
-        </div>
-        {filterActive ? (
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-zinc-800">
+          보기 필터
+          <InfoBadge text={opts.hint} />
+        </h2>
+        {opts.hidden.size > 0 ? (
           <button
             type="button"
-            onClick={() => setHiddenMainCategories([])}
+            onClick={() => opts.onChange([])}
             className="shrink-0 text-sm font-medium text-emerald-700 hover:text-emerald-900"
           >
             전체 다시 표시
           </button>
         ) : null}
       </div>
-      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         {allMainCategories.map((cat) => {
-          const visible = !hiddenSet.has(cat);
+          const visible = !opts.hidden.has(cat);
           return (
             <label
               key={cat}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm hover:bg-zinc-100"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-sm hover:bg-zinc-100"
             >
               <input
                 type="checkbox"
                 className="rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
                 checked={visible}
-                onChange={() => toggleCategoryVisible(cat)}
+                onChange={() =>
+                  opts.onChange(
+                    visible ? [...Array.from(opts.hidden), cat] : Array.from(opts.hidden).filter((c) => c !== cat)
+                  )
+                }
               />
-              <span className={visible ? "text-zinc-900" : "text-zinc-400 line-through"}>
-                {cat}
-              </span>
+              <span className={visible ? "text-zinc-900" : "text-zinc-400 line-through"}>{cat}</span>
             </label>
           );
         })}
@@ -880,7 +856,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                 분류 설정
                 <InfoBadge text="거래에 쓸 대분류를 추가하거나 이름을 바꿔요. 예산 항목 이름도 여기서 바꿔요." />
               </h2>
-              <div className="mt-5 flex gap-2">
+              <div className="mt-3 flex gap-2">
                 <input
                   type="text"
                   value={newCategoryName}
@@ -892,7 +868,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                     }
                   }}
                   placeholder="새 대분류 이름"
-                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
                 />
                 <button
                   type="button"
@@ -901,14 +877,14 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                     void updateCategorySettings({ action: "add", name: newCategoryName.trim() });
                     setNewCategoryName("");
                   }}
-                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  className="rounded-lg bg-emerald-700 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                 >
                   대분류 추가
                 </button>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {allMainCategories.map((category) => (
-                  <div key={category} className="flex items-center gap-2 rounded-lg border border-zinc-200 p-2">
+                  <div key={category} className="flex items-center gap-2 rounded-lg border border-zinc-200 p-2 text-sm">
                     <input
                       type="text"
                       defaultValue={category}
@@ -926,7 +902,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                           });
                         }
                       }}
-                      className="min-w-0 flex-1 rounded border border-transparent px-2 py-1 text-sm hover:border-zinc-300 focus:border-emerald-600 focus:outline-none"
+                      className="min-w-0 flex-1 rounded border border-transparent px-1 py-0.5 text-sm hover:border-zinc-300 focus:border-emerald-600 focus:outline-none"
                     />
                     <button
                       type="button"
@@ -953,12 +929,12 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   value={ruleDraft.match}
                   onChange={(event) => setRuleDraft((prev) => ({ ...prev, match: event.target.value }))}
                   placeholder="내용에 들어가는 글자 (예: KT통신요금)"
-                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
                 />
                 <select
                   value={ruleDraft.category}
                   onChange={(event) => setRuleDraft((prev) => ({ ...prev, category: event.target.value }))}
-                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
                 >
                   <option value="">대분류 선택</option>
                   {allMainCategories.map((category) => (
@@ -974,7 +950,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                     void updateCategorySettings({ action: "rule-add", ...ruleDraft });
                     setRuleDraft({ match: "", category: "" });
                   }}
-                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  className="rounded-lg bg-emerald-700 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                 >
                   규칙 추가
                 </button>
@@ -999,8 +975,8 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               <h3 className="mt-6 text-sm font-semibold text-zinc-800">예산 항목 이름</h3>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {BUDGET_ITEM_KEYS.map((key) => (
-                  <label key={key} className="text-xs text-zinc-500">
-                    기본 이름: {DEFAULT_BUDGET_ITEM_LABELS[key]}
+                  <label key={key} className="flex items-center gap-2 rounded-lg border border-zinc-200 p-2 text-sm">
+                    <span className="shrink-0 text-xs text-zinc-400">{DEFAULT_BUDGET_ITEM_LABELS[key]} →</span>
                     <input
                       type="text"
                       defaultValue={budgetItemLabels[key]}
@@ -1014,7 +990,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                           void updateCategorySettings({ action: "budget-label", key, label });
                         }
                       }}
-                      className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
+                      className="min-w-0 flex-1 rounded border border-transparent px-1 py-0.5 text-sm text-zinc-900 hover:border-zinc-300 focus:border-emerald-600 focus:outline-none"
                     />
                   </label>
                 ))}
@@ -1022,413 +998,25 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </section>
 
 
-            <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:items-end">
-                  <label className="text-sm font-semibold text-emerald-950">
-                    월 고정 급여
-                    <span className="mt-2 flex items-center rounded-lg border border-emerald-300 bg-white px-3">
-                      <span className="text-zinc-400">₩</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step={10000}
-                        value={budgetPlan.fixedSalary || ""}
-                        placeholder="매월 세후 급여"
-                        onChange={(e) => {
-                          setBudgetSaved(false);
-                          setBudgetPlan((prev) => ({
-                            ...prev,
-                            fixedSalary: Math.max(0, Number(e.target.value) || 0),
-                          }));
-                        }}
-                        className="w-full bg-transparent px-2 py-2.5 text-right font-semibold tabular-nums outline-none"
-                      />
-                    </span>
-                  </label>
-                  <div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-emerald-900">
-                        월 예산 배분 {formatWon(salaryAllocation.allocated)}
-                      </span>
-                      <span
-                        className={`font-semibold ${
-                          salaryAllocation.rate > 100 ? "text-red-700" : "text-emerald-900"
-                        }`}
-                      >
-                        급여의 {salaryAllocation.rate.toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-emerald-100">
-                      <div
-                        className={`h-full rounded-full ${
-                          salaryAllocation.rate > 100 ? "bg-red-500" : "bg-emerald-600"
-                        }`}
-                        style={{ width: `${Math.min(salaryAllocation.rate, 100)}%` }}
-                      />
-                    </div>
-                    <p
-                      className={`mt-2 text-xs ${
-                        salaryAllocation.remaining < 0 ? "text-red-700" : "text-emerald-800"
-                      }`}
-                    >
-                      {salaryAllocation.remaining < 0
-                        ? `급여보다 ${formatWon(Math.abs(salaryAllocation.remaining))} 많이 배분됨`
-                        : `미배분 급여 ${formatWon(salaryAllocation.remaining)}`}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-zinc-800">
-                    예산 계획
-                    <InfoBadge text="기간과 항목별 금액을 정하고, 어떤 대분류를 어느 예산 항목으로 셀지 연결해요." />
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={saveBudgetPlan}
-                  disabled={budgetBusy || !budgetPlan.startDate || !budgetPlan.endDate}
-                  className="shrink-0 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {budgetBusy ? "저장 중…" : budgetSaved ? "저장됨" : "예산 저장"}
-                </button>
-              </div>
-
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <label className="text-sm text-zinc-600">
-                  시작일
-                  <input
-                    type="date"
-                    value={budgetPlan.startDate}
-                    onChange={(e) => {
-                      setBudgetSaved(false);
-                      setBudgetPlan((prev) => ({ ...prev, startDate: e.target.value }));
-                    }}
-                    className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-zinc-900"
-                  />
-                </label>
-                <label className="text-sm text-zinc-600">
-                  종료일
-                  <input
-                    type="date"
-                    value={budgetPlan.endDate}
-                    onChange={(e) => {
-                      setBudgetSaved(false);
-                      setBudgetPlan((prev) => ({ ...prev, endDate: e.target.value }));
-                    }}
-                    className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-zinc-900"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-800">
-                    월 예산
-                    <InfoBadge text="매달 새로 시작하는 예산이에요. 남은 돈은 다음 달로 넘어가지 않아요." />
-                  </h3>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {MONTHLY_BUDGET_KEYS.map((key) => ({ key, budget: budgetPlan.amounts[key] })).map(({ key, budget }) => (
-                  <div key={key} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                    <label className="text-sm font-semibold text-zinc-800">
-                      {budgetItemLabels[key]}
-                      <span className="mt-2 flex items-center rounded-md border border-zinc-300 bg-white px-2">
-                        <span className="text-sm text-zinc-400">₩</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step={10000}
-                          value={budget || ""}
-                          placeholder="월 예산 금액"
-                          onChange={(e) => {
-                            setBudgetSaved(false);
-                            setBudgetPlan((prev) => ({
-                              ...prev,
-                              amounts: {
-                                ...prev.amounts,
-                                [key]: Math.max(0, Number(e.target.value) || 0),
-                              },
-                            }));
-                          }}
-                          className="w-full bg-transparent px-2 py-2 text-right text-sm tabular-nums outline-none"
-                        />
-                      </span>
-                    </label>
-                    <p className="mt-2 text-xs text-emerald-700">
-                      고정 급여의{" "}
-                      {budgetPlan.fixedSalary > 0
-                        ? `${((budget / budgetPlan.fixedSalary) * 100).toFixed(1)}%`
-                        : "—"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-7">
-                <h3 className="text-sm font-semibold text-zinc-800">
-                  누적·이월 예산
-                  <InfoBadge text="매달 금액이 쌓이고, 덜 쓴 돈은 다음 달로 넘어가요." />
-                </h3>
-              </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {rolloverBudgetProgress.map(
-                  ({
-                    key,
-                    monthlyBudget,
-                    planTotal,
-                  }) => (
-                    <div key={key} className="rounded-lg border border-violet-200 bg-violet-50/40 p-4">
-                      <label className="text-sm font-semibold text-zinc-800">
-                        {budgetItemLabels[key]}
-                        <span className="ml-2 text-xs font-normal text-zinc-500">월 예산</span>
-                        <span className="mt-2 flex items-center rounded-md border border-zinc-300 bg-white px-2">
-                          <span className="text-sm text-zinc-400">₩</span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={10000}
-                            value={monthlyBudget || ""}
-                            placeholder="매월 예산"
-                            onChange={(e) => {
-                              setBudgetSaved(false);
-                              setBudgetPlan((prev) => ({
-                                ...prev,
-                                amounts: {
-                                  ...prev.amounts,
-                                  [key]: Math.max(0, Number(e.target.value) || 0),
-                                },
-                              }));
-                            }}
-                            className="w-full bg-transparent px-2 py-2 text-right text-sm tabular-nums outline-none"
-                          />
-                        </span>
-                      </label>
-                      <p className="mt-2 text-xs text-violet-700">
-                        고정 급여의{" "}
-                        {budgetPlan.fixedSalary > 0
-                          ? `${((monthlyBudget / budgetPlan.fixedSalary) * 100).toFixed(1)}%`
-                          : "—"}
-                        {" · "}전체 기간 계획 {formatWon(planTotal)}
-                      </p>
-                    </div>
-                  )
-                )}
-              </div>
-
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold text-zinc-800">
-                  예산에 넣을 대분류
-                  <InfoBadge text="연결하지 않은 대분류(여행/숙박·목적자금·가구/가전 등)는 예산 집행률에서 빠져요." />
-                </h3>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {allMainCategories.map((category) => (
-                    <label
-                      key={category}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                    >
-                      <span className="min-w-0 truncate text-zinc-700" title={category}>
-                        {category}
-                      </span>
-                      <select
-                        value={budgetPlan.categoryMappings[category] ?? ""}
-                        onChange={(e) => {
-                          const value = e.target.value as BudgetItemKey | "";
-                          setBudgetSaved(false);
-                          setBudgetPlan((prev) => {
-                            const categoryMappings = { ...prev.categoryMappings };
-                            if (value) categoryMappings[category] = value;
-                            else delete categoryMappings[category];
-                            return { ...prev, categoryMappings };
-                          });
-                        }}
-                        className="max-w-[130px] rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800"
-                      >
-                        <option value="">미지정</option>
-                        {BUDGET_ITEM_KEYS.map((key) => (
-                          <option key={key} value={key}>
-                            {budgetItemLabels[key]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-semibold text-zinc-800">
-                저장된 예산
-                <InfoBadge text="지난 예산을 열어보거나, 같은 설정을 새 기간으로 복사할 수 있어요." />
-              </h2>
-              <div className="mt-4 space-y-3">
-                {[...budgetPlans]
-                  .sort((a, b) => b.startDate.localeCompare(a.startDate))
-                  .map((plan) => {
-                    const expanded = expandedBudgetPlanId === plan.id;
-                    const reusing = reusePlanId === plan.id;
-                    return (
-                      <div
-                        key={plan.id}
-                        className={`rounded-lg border ${
-                          activeBudgetPlanId === plan.id
-                            ? "border-emerald-400 bg-emerald-50/40"
-                            : "border-zinc-200"
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3 p-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedBudgetPlanId((prev) => (prev === plan.id ? null : plan.id))
-                            }
-                            className="text-left"
-                          >
-                            <span className="text-sm font-semibold text-zinc-900">
-                              {plan.startDate} ~ {plan.endDate}
-                            </span>
-                            {activeBudgetPlanId === plan.id ? (
-                              <span className="ml-2 rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
-                                현재 적용
-                              </span>
-                            ) : null}
-                            <span className="ml-2 text-xs text-zinc-400">
-                              {expanded ? "접기" : "상세 보기"}
-                            </span>
-                          </button>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBudgetPlan({
-                                  startDate: plan.startDate,
-                                  endDate: plan.endDate,
-                                  fixedSalary: plan.fixedSalary,
-                                  amounts: { ...plan.amounts },
-                                  categoryMappings: { ...plan.categoryMappings },
-                                });
-                                setActiveBudgetPlanId(plan.id);
-                                setBudgetSaved(false);
-                              }}
-                              className="rounded border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-700"
-                            >
-                              편집
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setReusePlanId(plan.id);
-                                setReuseDates(reusedPeriodDates(plan));
-                              }}
-                              className="rounded border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-700"
-                            >
-                              예산 재사용
-                            </button>
-                          </div>
-                        </div>
-                        {expanded ? (
-                          <div className="border-t border-zinc-200 px-3 py-3">
-                            <p className="text-xs text-zinc-500">
-                              월 고정 급여 {formatWon(plan.fixedSalary)}
-                            </p>
-                            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              {BUDGET_ITEM_KEYS.map((key) => (
-                                <div key={key} className="rounded bg-zinc-50 px-3 py-2 text-xs">
-                                  <span className="text-zinc-500">{budgetItemLabels[key]}</span>
-                                  <span className="float-right font-semibold tabular-nums text-zinc-900">
-                                    {formatWon(plan.amounts[key])}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                            <p className="mt-3 text-xs text-zinc-500">
-                              대분류 매핑 {Object.keys(plan.categoryMappings).length}개
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {Object.entries(plan.categoryMappings).map(([category, key]) => (
-                                <span
-                                  key={category}
-                                  className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600"
-                                >
-                                  {category} → {budgetItemLabels[key]}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        {reusing ? (
-                          <div className="border-t border-blue-100 bg-blue-50/50 p-3">
-                            <p className="text-xs font-medium text-blue-900">새 적용 기간</p>
-                            <div className="mt-2 flex flex-wrap items-end gap-2">
-                              <label className="text-xs text-zinc-600">
-                                시작일
-                                <input
-                                  type="date"
-                                  value={reuseDates.startDate}
-                                  onChange={(event) =>
-                                    setReuseDates((prev) => ({
-                                      ...prev,
-                                      startDate: event.target.value,
-                                    }))
-                                  }
-                                  className="ml-2 rounded border border-zinc-300 bg-white px-2 py-1.5"
-                                />
-                              </label>
-                              <label className="text-xs text-zinc-600">
-                                종료일
-                                <input
-                                  type="date"
-                                  value={reuseDates.endDate}
-                                  onChange={(event) =>
-                                    setReuseDates((prev) => ({
-                                      ...prev,
-                                      endDate: event.target.value,
-                                    }))
-                                  }
-                                  className="ml-2 rounded border border-zinc-300 bg-white px-2 py-1.5"
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                disabled={budgetBusy || !reuseDates.startDate || !reuseDates.endDate}
-                                onClick={reuseBudgetPlan}
-                                className="rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-                              >
-                                새 기간으로 적용
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setReusePlanId(null)}
-                                className="px-2 py-1.5 text-xs text-zinc-500"
-                              >
-                                취소
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                {budgetPlans.length === 0 ? (
-                  <p className="rounded-lg bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-400">
-                    저장된 예산이 없습니다.
-                  </p>
-                ) : null}
-              </div>
-            </section>
+            <BudgetSettings
+              plans={budgetPlans}
+              labels={budgetItemLabels}
+              categories={allMainCategories}
+              busy={budgetBusy}
+              onSave={saveBudgetPlan}
+              onDelete={deleteBudgetPlan}
+            />
 
             </div>
             <div className={activeTab === "calendar" ? "contents" : "hidden"}>
-              {viewFilter}
+              {renderFilter({
+                hint: "가계부는 직접 조절할 수 있는 생활 지출만 보도록 걸러요. 체크를 끈 대분류는 달력과 날짜별 거래에서 빠지고, 이 설정은 저장돼요.",
+                hidden: calendarHiddenSet,
+                onChange: saveCalendarHidden,
+              })}
               <CalendarTab
                 ledger={tripLedger}
-                dayEntries={visibleEntries}
+                dayEntries={calendarEntries}
                 settlementGroups={settlementGroups}
                 events={trips}
                 flowKind={flowKind}
@@ -1475,7 +1063,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                     예산 집행률
                     {monthPlan ? (
                       <InfoBadge
-                        text={`${monthPlan.startDate} ~ ${monthPlan.endDate} 예산 기준이에요. 환불은 쓴 돈에서 빼고, 투자·적금은 넣은 금액만 세요.`}
+                        text={`${monthPlan.startDate} ~ ${monthPlanEnd || "진행 중"} 예산 기준이에요. 환불은 쓴 돈에서 빼고, 투자·적금은 넣은 금액만 세요.`}
                       />
                     ) : null}
                   </h2>
@@ -1532,13 +1120,13 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               </div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 {rolloverBudgetProgress.map(
-                  ({ key, available, spent, carryover, rate, elapsedMonths, totalMonths, cutoff }) => (
+                  ({ key, available, spent, carryover, rate, elapsedMonths }) => (
                     <div key={key} className="rounded-lg border border-violet-200 bg-violet-50/40 p-4">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-sm font-semibold text-zinc-800">{budgetItemLabels[key]}</p>
                           <p className="mt-1 text-xs text-zinc-500">
-                            {elapsedMonths}/{totalMonths || 0}개월 · {cutoff || "—"} 기준
+                            {elapsedMonths}개월째 누적
                           </p>
                         </div>
                         <span className={`text-xs font-semibold ${rate > 100 ? "text-red-700" : "text-violet-800"}`}>
@@ -1771,7 +1359,11 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
             </div>
             <div className={activeTab === "ledger" ? "contents" : "hidden"}>
-            {viewFilter}
+            {renderFilter({
+              hint: "상세내역에는 모든 거래가 들어가요. 체크를 끈 대분류는 상세내역과 홈 차트에서 잠깐 빠지고, 새로고침하면 다시 모두 보여요.",
+              hidden: hiddenSet,
+              onChange: setHiddenMainCategories,
+            })}
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -2205,26 +1797,5 @@ function StatCard({
       </p>
       <p className="mt-2 text-xl font-semibold tabular-nums text-zinc-900">{value}</p>
     </div>
-  );
-}
-
-/** 설명 문구는 화면에 늘어놓지 않고 ? 배지에 올리면(또는 키보드로 포커스하면) 보여줍니다. */
-function InfoBadge({ text }: { text: React.ReactNode }) {
-  return (
-    <span className="group relative ml-1.5 inline-flex align-middle">
-      <span
-        tabIndex={0}
-        aria-label="설명 보기"
-        className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-zinc-300 text-[10px] font-semibold text-zinc-500 hover:border-emerald-600 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-600"
-      >
-        ?
-      </span>
-      <span
-        role="tooltip"
-        className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg bg-zinc-900 px-3 py-2 text-left text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
-      >
-        {text}
-      </span>
-    </span>
   );
 }

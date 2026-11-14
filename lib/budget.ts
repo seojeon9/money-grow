@@ -21,6 +21,7 @@ export const DEFAULT_BUDGET_ITEM_LABELS: Record<BudgetItemKey, string> = {
 
 export type BudgetPlan = {
   startDate: string;
+  /** 예전 형식의 고정 종료일. 지금은 쓰지 않고 다음 예산 시작일로 끝을 정합니다(budgetPlanEndDate). */
   endDate: string;
   /** 매월 반복되는 세후 기준 급여 */
   fixedSalary: number;
@@ -90,13 +91,27 @@ export function flowKindOf(
   return e.amount >= 0 ? "income" : "spend";
 }
 
-/** 해당 월(YYYY-MM)을 기간에 포함하는 예산 중 가장 최근에 만든 것. */
+/**
+ * 예산은 시작일부터 다음 예산 시작 전날까지 이어집니다(수입이 바뀔 때 새 예산을 시작).
+ * 해당 월(YYYY-MM)에 적용되는 예산 = 그 달 말일까지 시작한 예산 중 가장 늦게 시작한 것.
+ */
 export function budgetPlanForMonth(plans: SavedBudgetPlan[], month: string): SavedBudgetPlan | null {
   return (
     plans
-      .filter((p) => p.startDate.slice(0, 7) <= month && month <= p.endDate.slice(0, 7))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null
+      .filter((p) => p.startDate && p.startDate.slice(0, 7) <= month)
+      .sort((a, b) => b.startDate.localeCompare(a.startDate) || b.createdAt.localeCompare(a.createdAt))[0] ?? null
   );
+}
+
+/** 예산이 끝나는 날(다음 예산 시작 전날). 다음 예산이 없으면 ""(진행 중). */
+export function budgetPlanEndDate(plans: SavedBudgetPlan[], plan: SavedBudgetPlan): string {
+  const next = plans
+    .filter((p) => p.startDate > plan.startDate)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+  if (!next) return "";
+  const d = new Date(`${next.startDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 /** 캘린더 일정. 여행은 기간 지출을 여행/숙박으로 보고, 약속은 정산(n빵) 묶기용으로만 씁니다. kind가 없으면 예전 데이터라 여행입니다. */

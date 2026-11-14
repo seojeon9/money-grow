@@ -10,7 +10,8 @@ type Body =
   | { action: "trip-add"; name?: string; kind?: string; startDate?: string; endDate?: string }
   | { action: "trip-delete"; id?: string }
   | { action: "rule-add"; match?: string; category?: string }
-  | { action: "rule-delete"; match?: string };
+  | { action: "rule-delete"; match?: string }
+  | { action: "calendar-hidden"; categories?: unknown };
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -105,6 +106,14 @@ export async function POST(req: Request) {
       budgetPlans,
       categorySettings: { ...store.categorySettings, categories },
     });
+    return NextResponse.json(storeToResponse(saved));
+  }
+
+  if (body.action === "calendar-hidden") {
+    const calendarHidden = Array.isArray(body.categories)
+      ? Array.from(new Set(body.categories.filter((c): c is string => typeof c === "string" && !!c.trim())))
+      : [];
+    const saved = await writeLedgerStore({ ...store, categorySettings: { ...store.categorySettings, calendarHidden } });
     return NextResponse.json(storeToResponse(saved));
   }
 
