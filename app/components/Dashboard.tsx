@@ -1055,6 +1055,8 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                 onUngroup={(groupId) => void requestSettlement("DELETE", { groupId })}
                 onNote={updateEntryNote}
                 onLabels={updateEntryLabels}
+                onCategory={updateEntryCategory}
+                categories={allMainCategories}
               />
             </div>
             <div className={activeTab === "home" ? "contents" : "hidden"}>

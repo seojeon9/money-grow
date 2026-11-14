@@ -62,6 +62,8 @@ export default function CalendarTab({
   onUngroup,
   onNote,
   onLabels,
+  onCategory,
+  categories,
 }: {
   /** 여행 분류가 적용된 원본 거래(정산 후보용) */
   ledger: LedgerEntry[];
@@ -77,6 +79,9 @@ export default function CalendarTab({
   onUngroup: (groupId: string) => void;
   onNote: (entry: LedgerEntry, note: string) => void;
   onLabels: (entry: LedgerEntry, labels: string[]) => void;
+  onCategory: (entry: LedgerEntry, category: string) => void;
+  /** 대분류 선택지 */
+  categories: string[];
 }) {
   const [month, setMonth] = useState(() => todayIso().slice(0, 7));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -316,7 +321,7 @@ export default function CalendarTab({
             <h2 className="text-lg font-semibold text-zinc-800">
               {Number(selectedDate.slice(5, 7))}월 {Number(selectedDate.slice(8))}일 (
               {WEEKDAYS[new Date(`${selectedDate}T00:00:00Z`).getUTCDay()]})
-              <InfoBadge text="그날의 거래예요. 줄을 누르면 라벨(외식·배달 등)과 메모를 달 수 있어요. 라벨은 소분류로 먼저 추정해 두고, 외식·배달은 달력 날짜 옆에 스티커로 보여요. 회색 줄(내 계좌 이동·카드대금·투자)은 지출 합계에 들어가지 않아요." />
+              <InfoBadge text="그날의 거래예요. 줄을 누르면 대분류를 바꾸고 라벨(외식·배달 등)과 메모를 달 수 있어요. 라벨은 소분류로 먼저 추정해 두고, 외식·배달은 달력 날짜 옆에 스티커로 보여요. 회색 줄(내 계좌 이동·카드대금·투자)은 지출 합계에 들어가지 않아요." />
             </h2>
             <span className="text-sm text-zinc-600">
               지출 <span className="font-semibold tabular-nums text-zinc-900">{won(daySpend)}</span>
@@ -373,6 +378,19 @@ export default function CalendarTab({
                 </div>
                 {open ? (
                   <div className="mb-2 ml-14 flex flex-wrap items-center gap-1.5 rounded-lg bg-zinc-50 p-2">
+                    <select
+                      value={mainCategoryOf(e)}
+                      aria-label="대분류"
+                      onChange={(ev) => onCategory(e, ev.target.value)}
+                      className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm"
+                    >
+                      {Array.from(new Set([mainCategoryOf(e), ...categories])).map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="mx-1 h-4 w-px bg-zinc-300" aria-hidden="true" />
                     {ENTRY_LABELS.map(({ name }) => {
                       const on = labels.includes(name);
                       return (
@@ -401,7 +419,7 @@ export default function CalendarTab({
                         const value = ev.currentTarget.value.trim();
                         if (value !== memo) onNote(e, value);
                       }}
-                      className="ml-auto min-w-[10rem] flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm"
+                      className="min-w-[10rem] flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm"
                     />
                   </div>
                 ) : null}
