@@ -724,6 +724,50 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
   const filterActive = hiddenMainCategories.length > 0;
 
+  /** 보기 필터: 가계부·상세내역 탭에서 함께 씁니다(저장 안 됨). */
+  const viewFilter = (
+    <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-800">
+            보기 필터
+            <InfoBadge text="체크를 끈 대분류는 가계부 달력·상세내역과 홈 차트·지출 TOP에서 잠깐 빠져요. 저장되지 않아서 새로고침하면 다시 모두 보여요." />
+          </h2>
+        </div>
+        {filterActive ? (
+          <button
+            type="button"
+            onClick={() => setHiddenMainCategories([])}
+            className="shrink-0 text-sm font-medium text-emerald-700 hover:text-emerald-900"
+          >
+            전체 다시 표시
+          </button>
+        ) : null}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
+        {allMainCategories.map((cat) => {
+          const visible = !hiddenSet.has(cat);
+          return (
+            <label
+              key={cat}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm hover:bg-zinc-100"
+            >
+              <input
+                type="checkbox"
+                className="rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
+                checked={visible}
+                onChange={() => toggleCategoryVisible(cat)}
+              />
+              <span className={visible ? "text-zinc-900" : "text-zinc-400 line-through"}>
+                {cat}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </section>
+  );
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
       <header className="border-b border-zinc-200 bg-white">
@@ -1381,6 +1425,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
             </div>
             <div className={activeTab === "calendar" ? "contents" : "hidden"}>
+              {viewFilter}
               <CalendarTab
                 ledger={tripLedger}
                 dayEntries={visibleEntries}
@@ -1726,46 +1771,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
             </div>
             <div className={activeTab === "ledger" ? "contents" : "hidden"}>
-            <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-zinc-800">
-                    보기 필터
-                    <InfoBadge text="체크를 끈 대분류는 상세내역과 홈 차트·지출 TOP에서 잠깐 빠져요. 저장되지 않아서 새로고침하면 다시 모두 보여요." />
-                  </h2>
-                </div>
-                {filterActive ? (
-                  <button
-                    type="button"
-                    onClick={() => setHiddenMainCategories([])}
-                    className="shrink-0 text-sm font-medium text-emerald-700 hover:text-emerald-900"
-                  >
-                    전체 다시 표시
-                  </button>
-                ) : null}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
-                {allMainCategories.map((cat) => {
-                  const visible = !hiddenSet.has(cat);
-                  return (
-                    <label
-                      key={cat}
-                      className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm hover:bg-zinc-100"
-                    >
-                      <input
-                        type="checkbox"
-                        className="rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
-                        checked={visible}
-                        onChange={() => toggleCategoryVisible(cat)}
-                      />
-                      <span className={visible ? "text-zinc-900" : "text-zinc-400 line-through"}>
-                        {cat}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </section>
+            {viewFilter}
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
