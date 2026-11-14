@@ -92,6 +92,12 @@ function formatWon(n: number) {
   return won.format(n);
 }
 
+/** 금액 색: 지출 빨강, 환불·취소(지출 타입의 +금액) 파랑, 수입 초록 */
+function amountColor(e: Pick<LedgerEntry, "txType" | "amount">): string {
+  if (e.amount < 0) return "text-red-700";
+  return e.txType === "지출" ? "text-blue-700" : "text-emerald-700";
+}
+
 function noteOf(e: LedgerEntry): string {
   return e.noteOverride ?? e.note ?? "";
 }
@@ -1402,13 +1408,34 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                       </button>
                     </>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setSettlementMode(true)}
-                      className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
-                    >
-                      거래 합치기
-                    </button>
+                    <div className="group relative">
+                      <button
+                        type="button"
+                        aria-label="거래내역 설정"
+                        aria-haspopup="menu"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-500 hover:text-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10.3 4.3c.4-1.7 3-1.7 3.4 0a1.7 1.7 0 0 0 2.6 1.1c1.5-.9 3.3.8 2.4 2.4a1.7 1.7 0 0 0 1 2.5c1.8.5 1.8 3 0 3.5a1.7 1.7 0 0 0-1 2.6c.9 1.5-.9 3.3-2.4 2.4a1.7 1.7 0 0 0-2.6 1c-.4 1.8-3 1.8-3.4 0a1.7 1.7 0 0 0-2.6-1c-1.5.9-3.3-.9-2.4-2.4a1.7 1.7 0 0 0-1-2.6c-1.8-.4-1.8-3 0-3.4a1.7 1.7 0 0 0 1-2.6c-.9-1.5.9-3.3 2.4-2.4a1.7 1.7 0 0 0 2.6-1.1z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </button>
+                      <div
+                        role="menu"
+                        className="invisible absolute right-0 top-full z-20 pt-1 opacity-0 transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
+                      >
+                        <div className="w-36 rounded-lg border border-zinc-200 bg-white py-1 shadow-lg">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => setSettlementMode(true)}
+                            className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                          >
+                            거래 합치기
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                   <label htmlFor="tx-month" className="text-sm text-zinc-600">
                     조회 월
@@ -1567,7 +1594,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                               </td>
                               <td
                                 className={`whitespace-nowrap py-2 text-right tabular-nums font-medium ${
-                                  e.amount >= 0 ? "text-emerald-700" : "text-red-700"
+                                  amountColor(e)
                                 }`}
                               >
                                 {formatWon(e.amount)}
@@ -1629,7 +1656,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                                         </span>
                                         <span
                                           className={`font-semibold tabular-nums ${
-                                            detail.amount < 0 ? "text-red-700" : "text-emerald-700"
+                                            amountColor(detail)
                                           }`}
                                         >
                                           {formatWon(detail.amount)}
@@ -1743,7 +1770,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                               </td>
                               <td
                                 className={`py-2 text-right tabular-nums font-medium ${
-                                  e.amount >= 0 ? "text-emerald-700" : "text-red-700"
+                                  amountColor(e)
                                 }`}
                               >
                                 {formatWon(e.amount)}
