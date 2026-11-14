@@ -58,6 +58,12 @@ export const HOUSEHOLD_MEMBERS = ["서정", "상윤"] as const;
 /** 내 계좌 사이 이동·카드값 결제: 실제 소비는 카드 사용 건에 이미 잡혀 있으므로 집계에서 뺍니다. */
 const INTERNAL_CATEGORIES = new Set(["내계좌이체", "카드대금"]);
 
+/**
+ * 자산 쪽 흐름: 투자·저축, 집 매매·전세금(주택자금), 부모님 증여.
+ * 수입·지출이 아니라 자산형성(넣은 돈 − 받은 돈)으로만 계산합니다.
+ */
+const ASSET_CATEGORIES = new Set(["투자", "저축", "주택자금", "증여"]);
+
 export function mainCategoryOf(e: LedgerEntry): string {
   return e.categoryMainOverride?.trim() || e.categoryMain?.trim() || "기타";
 }
@@ -65,7 +71,7 @@ export function mainCategoryOf(e: LedgerEntry): string {
 /**
  * 가구 관점의 돈 흐름 분류.
  * - internal: 내 계좌끼리·부부끼리 이동, 카드대금 → 수입·지출 모두에서 제외
- * - asset: 투자·저축(또는 투자·적금·저금 예산에 매핑된 대분류) → 자산형성으로 따로 집계
+ * - asset: 투자·저축·주택자금·증여(또는 투자·적금·저금 예산에 매핑된 대분류) → 자산형성으로 따로 집계
  * - income / spend: 나머지. 지출 유형의 +금액(환불·취소)은 spend로 두어 지출을 줄입니다.
  */
 export function flowKindOf(
@@ -77,7 +83,7 @@ export function flowKindOf(
   if (category === "이체" && HOUSEHOLD_MEMBERS.some((name) => e.description.includes(name))) {
     return "internal";
   }
-  if (category === "투자" || category === "저축" || categoryMappings[category] === "investmentSavings") {
+  if (ASSET_CATEGORIES.has(category) || categoryMappings[category] === "investmentSavings") {
     return "asset";
   }
   if (e.txType === "지출") return "spend";

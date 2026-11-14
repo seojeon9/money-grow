@@ -1581,7 +1581,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                         <span className="block">· 카드대금 (카드 쓴 날 지출로 이미 잡혀요)</span>
                         {filterActive ? <span className="block">· 대분류 표시에서 꺼둔 대분류</span> : null}
                         <span className="mt-1 block">지출은 환불을 뺀 금액이에요.</span>
-                        <span className="block">자산형성 = 투자·저축에 넣은 돈 − 찾은 돈</span>
+                        <span className="block">자산형성 = 투자·저축·집에 넣은 돈 − 찾은 돈·받은 증여</span>
                       </>
                     }
                   />
