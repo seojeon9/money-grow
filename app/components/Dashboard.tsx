@@ -722,7 +722,6 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   const filterActive = hiddenMainCategories.length > 0;
 
   const renderMonthlyBudget = ({ key, budget, spent, remaining, rate }: (typeof monthlyBudgetProgress)[number]) => (
-
     <div key={key} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-semibold text-zinc-800">{budgetItemLabels[key]}</p>
