@@ -153,8 +153,8 @@ MoneyGrow에는 데이터를 수집하고 정제하며 신뢰할 수 있는 파�
 - Tailwind CSS
 - Recharts
 - SheetJS (`xlsx`)
-- 현재 저장소: 로컬 JSON
-- 예정 저장소: PostgreSQL
+- 현재 저장소: SQLite (Node 내장 `node:sqlite`, `data/.moneygrow/moneygrow.db`)
+- 확장 시 저장소: PostgreSQL (여러 기기·원격 접속이 필요해질 때)
 
 ## 실행 방법
 
@@ -189,7 +189,7 @@ npm run dev:clean
 
 실제 금융 거래와 자산 정보는 민감한 개인 데이터입니다.
 
-- `data/.moneygrow/ledger-state.json`은 Git에 커밋하지 않습니다.
+- `data/.moneygrow/` 아래 DB·JSON 백업은 Git에 커밋하지 않습니다.
 - 원본 엑셀과 로컬 백업 파일도 외부 저장소에 공개하지 않습니다.
 - 인터넷에 공개 배포하기 전에는 인증, Household 권한, 암호화 및 접근 제어가 필요합니다.
 
