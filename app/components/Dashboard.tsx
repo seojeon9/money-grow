@@ -28,6 +28,8 @@ import {
   type SavedBudgetPlan,
   budgetPlanEndDate,
   budgetPlanForMonth,
+  payPeriodLabelOf,
+  payPeriodOf,
   refundedPairIds,
   flowKindOf,
   HOUSEHOLD_MEMBERS,
@@ -157,7 +159,8 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     ...DEFAULT_BUDGET_ITEM_LABELS,
   });
   const [budgetBusy, setBudgetBusy] = useState(false);
-  const [budgetMonth, setBudgetMonth] = useState<string>(currentMonthKey);
+  /** 예산 달(월급일~다음 월급 전날). 이름은 기간이 끝나는 달 */
+  const [budgetMonth, setBudgetMonth] = useState<string>(() => payPeriodLabelOf(localTodayIso()));
   const [newCategoryName, setNewCategoryName] = useState("");
   const [trips, setTrips] = useState<Trip[]>([]);
   const [rules, setRules] = useState<CategoryRule[]>([]);
@@ -425,8 +428,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     // 예산별로 볼 때는 대분류 필터 대신 고른 예산 항목으로 거릅니다.
     const base =
       ledgerFilterMode === "budget" ? ledgerWithSettlements.filter(isLedgerEntryCounted) : visibleEntries;
+    // 예산별로 볼 때는 홈 예산과 같은 월급 기준 기간, 아니면 달력 기준 월
+    const period = ledgerFilterMode === "budget" ? payPeriodOf(txMonth) : null;
     return base
-      .filter((e) => e.date.startsWith(txMonth))
+      .filter((e) => (period ? period.start <= e.date && e.date <= period.end : e.date.startsWith(txMonth)))
       .filter(
         (e) => ledgerFilterMode !== "budget" || budgetFilter.length === 0 || budgetFilter.includes(budgetItemOfEntry(e))
       )
@@ -455,12 +460,13 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     return Array.from(s).sort((a, b) => a.localeCompare(b, "ko"));
   }, [configuredCategories, ledger]);
 
-  /** 첫 예산 시작월부터 이번 달까지 */
+  /** 첫 예산이 시작된 예산 달부터 이번 예산 달까지 */
   const budgetMonthOptions = useMemo(() => {
-    const first = budgetPlans.map((p) => p.startDate.slice(0, 7)).filter(Boolean).sort()[0];
-    if (!first) return [budgetMonth];
+    const firstStart = budgetPlans.map((p) => p.startDate).filter(Boolean).sort()[0];
+    if (!firstStart) return [budgetMonth];
+    const first = payPeriodLabelOf(firstStart);
     const months: string[] = [];
-    const last = currentMonthKey();
+    const last = payPeriodLabelOf(localTodayIso());
     for (let m = first; m <= last && months.length < 600; ) {
       months.push(m);
       const [y, mo] = m.split("-").map(Number);
@@ -474,6 +480,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     () => budgetPlanForMonth(budgetPlans, budgetMonth),
     [budgetMonth, budgetPlans]
   );
+  const budgetPeriod = useMemo(() => payPeriodOf(budgetMonth), [budgetMonth]);
   /** monthPlan이 끝나는 날(다음 예산 전날). ""이면 진행 중. */
   const monthPlanEnd = useMemo(
     () => (monthPlan ? budgetPlanEndDate(budgetPlans, monthPlan) : ""),
@@ -495,7 +502,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       for (const entry of ledgerWithSettlements) {
         if (!isLedgerEntryCounted(entry)) continue;
         if (entry.date < monthPlan.startDate || (monthPlanEnd && entry.date > monthPlanEnd)) continue;
-        if (!entry.date.startsWith(budgetMonth)) continue;
+        if (entry.date < budgetPeriod.start || entry.date > budgetPeriod.end) continue;
         const item = monthPlan.categoryMappings[mainCategoryOf(entry)];
         if (!item) continue;
         // 투자·적금·저금은 납입액만, 소비 항목은 환불·취소(+금액)를 빼서 순사용액으로 계산합니다.
@@ -514,13 +521,17 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         rate: budget > 0 ? (used / budget) * 100 : 0,
       };
     });
-  }, [budgetMonth, monthPlan, monthPlanEnd, ledgerWithSettlements]);
+  }, [budgetPeriod, monthPlan, monthPlanEnd, ledgerWithSettlements]);
 
   /** 누적 예산: 조회 월의 예산 시작부터 그 달 말(또는 오늘·예산 끝)까지 쌓인 금액과 사용액 */
   const rolloverBudgetProgress = useMemo(() => {
-    const monthEnd = `${budgetMonth}-31`;
-    const cutoff = [localTodayIso(), monthEnd, monthPlanEnd || monthEnd].sort()[0];
-    const elapsedMonths = monthPlan && cutoff >= monthPlan.startDate ? inclusiveMonthCount(monthPlan.startDate, cutoff) : 0;
+    const periodEnd = budgetPeriod.end;
+    const cutoff = [localTodayIso(), periodEnd, monthPlanEnd || periodEnd].sort()[0];
+    // 예산 시작이 속한 예산 달부터 조회 예산 달까지 몇 달째인지(월급 기준 달로 셈)
+    const elapsedMonths =
+      monthPlan && cutoff >= monthPlan.startDate
+        ? inclusiveMonthCount(`${payPeriodLabelOf(monthPlan.startDate)}-01`, `${payPeriodLabelOf(cutoff)}-01`)
+        : 0;
     const spent = Object.fromEntries(ROLLOVER_BUDGET_KEYS.map((key) => [key, 0])) as Record<
       BudgetItemKey,
       number
@@ -546,7 +557,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         cutoff,
       };
     });
-  }, [budgetMonth, monthPlan, monthPlanEnd, ledgerWithSettlements]);
+  }, [budgetPeriod, monthPlan, monthPlanEnd, ledgerWithSettlements]);
 
   const applySettingsPayload = useCallback((j: LedgerApiPayload) => {
     if (j.ledger) setLedger(j.ledger);
@@ -1175,7 +1186,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                     예산 집행률
                     {monthPlan ? (
                       <InfoBadge
-                        text={`${monthPlan.startDate} ~ ${monthPlanEnd || "진행 중"} 예산 기준이에요. 환불은 쓴 돈에서 빼고, 투자·적금은 넣은 금액만 세요.`}
+                        text={`한 달은 월급일(25일, 주말·공휴일이면 그 전 영업일)부터 다음 월급 전날까지예요. 이번 기간 ${budgetPeriod.start} ~ ${budgetPeriod.end}. ${monthPlan.startDate} ~ ${monthPlanEnd || "진행 중"} 예산 기준이에요. 환불은 쓴 돈에서 빼고, 투자·적금은 넣은 금액만 세요.`}
                       />
                     ) : null}
                   </h2>
@@ -1194,11 +1205,14 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                     onChange={(event) => setBudgetMonth(event.target.value)}
                     className="ml-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-900"
                   >
-                    {budgetMonthOptions.map((month) => (
-                      <option key={month} value={month}>
-                        {month.replace("-", "년 ")}월
-                      </option>
-                    ))}
+                    {budgetMonthOptions.map((month) => {
+                      const { start, end } = payPeriodOf(month);
+                      return (
+                        <option key={month} value={month}>
+                          {month.replace("-", "년 ")}월 ({start.slice(5).replace("-", "/")}~{end.slice(5).replace("-", "/")})
+                        </option>
+                      );
+                    })}
                   </select>
                 </label>
               </div>
@@ -1605,6 +1619,13 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   {ledgerRowsForMonth.length.toLocaleString("ko-KR")}
                 </span>
                 건 · {txMonth.replace("-", "년 ")}월
+                {ledgerFilterMode === "budget" ? (
+                  <span className="text-zinc-500">
+                    {" "}
+                    (월급 기준 {payPeriodOf(txMonth).start.slice(5).replace("-", "/")}~
+                    {payPeriodOf(txMonth).end.slice(5).replace("-", "/")})
+                  </span>
+                ) : null}
                 {ledgerFilterMode === "budget" && budgetFilter.length > 0 ? (
                   <>
                     {" · "}

@@ -225,3 +225,60 @@ export function entryLabelsOf(e: LedgerEntry): string[] {
   if (e.categoryMain === "식비" && EATING_OUT_SUBS.has(sub)) return ["외식"];
   return [];
 }
+
+/**
+ * 한국 공휴일(대체공휴일·선거일 포함). 월급일 계산에만 씁니다.
+ * ponytail: 연도별 하드코딩, 2028년부터는 목록을 추가해야 함(없으면 주말만 피함).
+ */
+const KR_HOLIDAYS = new Set([
+  // 2025
+  "2025-01-01", "2025-01-27", "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-01", "2025-03-03",
+  "2025-05-05", "2025-05-06", "2025-06-03", "2025-06-06", "2025-08-15", "2025-10-03", "2025-10-05",
+  "2025-10-06", "2025-10-07", "2025-10-08", "2025-10-09", "2025-12-25",
+  // 2026
+  "2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-01", "2026-03-02", "2026-05-05",
+  "2026-05-24", "2026-05-25", "2026-06-03", "2026-06-06", "2026-08-15", "2026-08-17", "2026-09-24",
+  "2026-09-25", "2026-09-26", "2026-10-03", "2026-10-05", "2026-10-09", "2026-12-25",
+  // 2027
+  "2027-01-01", "2027-02-06", "2027-02-07", "2027-02-08", "2027-02-09", "2027-03-01", "2027-05-05",
+  "2027-05-13", "2027-06-06", "2027-08-15", "2027-08-16", "2027-09-14", "2027-09-15", "2027-09-16",
+  "2027-10-03", "2027-10-04", "2027-10-09", "2027-10-11", "2027-12-25", "2027-12-27",
+]);
+
+const PAYDAY = 25;
+
+function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 그 달 월급일: 25일, 주말·공휴일이면 그 앞 영업일. */
+export function paydayOf(month: string): string {
+  let day = `${month}-${PAYDAY}`;
+  for (;;) {
+    const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
+    if (dow !== 0 && dow !== 6 && !KR_HOLIDAYS.has(day)) return day;
+    day = addDaysIso(day, -1);
+  }
+}
+
+/**
+ * 예산 한 달 = 월급일부터 다음 월급 전날까지.
+ * 이름(YYYY-MM)은 기간이 끝나는 달로 붙입니다. 예: "2026-11" = 10/23(10월 월급) ~ 11/24.
+ */
+export function payPeriodOf(month: string): { start: string; end: string } {
+  return { start: paydayOf(shiftMonth(month, -1)), end: addDaysIso(paydayOf(month), -1) };
+}
+
+/** 날짜가 속한 예산 달 이름 */
+export function payPeriodLabelOf(date: string): string {
+  const month = date.slice(0, 7);
+  return date >= paydayOf(month) ? shiftMonth(month, 1) : month;
+}
