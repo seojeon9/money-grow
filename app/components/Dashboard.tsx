@@ -1384,6 +1384,19 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   </h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    id="tx-month"
+                    aria-label="조회 월"
+                    value={txMonth}
+                    onChange={(e) => setTxMonth(e.target.value)}
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                  >
+                    {monthSelectOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {m.replace("-", "년 ")}월
+                      </option>
+                    ))}
+                  </select>
                   {settlementMode ? (
                     <>
                       <button
@@ -1437,21 +1450,6 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                       </div>
                     </div>
                   )}
-                  <label htmlFor="tx-month" className="text-sm text-zinc-600">
-                    조회 월
-                  </label>
-                  <select
-                    id="tx-month"
-                    value={txMonth}
-                    onChange={(e) => setTxMonth(e.target.value)}
-                    className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                  >
-                    {monthSelectOptions.map((m) => (
-                      <option key={m} value={m}>
-                        {m.replace("-", "년 ")}월
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
               <p className="mt-2 text-sm text-zinc-600">
