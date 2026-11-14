@@ -30,13 +30,19 @@ async function pickLatestXlsx(dir: string): Promise<{ name: string; full: string
   }
   const xlsx = names.filter((n) => n.endsWith(".xlsx"));
   if (xlsx.length === 0) return null;
+  // 파일명 `시작일~종료일.xlsx`의 종료일이 가장 늦은 파일을 고르고, 같거나 없으면 수정 시각으로 비교합니다.
+  // 수정 시각만 보면 옛 기간 파일을 나중에 넣었을 때 그 파일이 "최신"으로 잡힙니다.
+  const endDateOf = (n: string) => n.match(/~(\d{4}-\d{2}-\d{2})/)?.[1] ?? "";
   let best = xlsx[0];
+  let bestEnd = "";
   let bestT = 0;
   for (const n of xlsx) {
     const full = path.join(dir, n);
     try {
       const st = await stat(full);
-      if (st.mtimeMs >= bestT) {
+      const end = endDateOf(n);
+      if (end > bestEnd || (end === bestEnd && st.mtimeMs >= bestT)) {
+        bestEnd = end;
         bestT = st.mtimeMs;
         best = n;
       }
@@ -82,7 +88,8 @@ export async function GET() {
   const summaryLabel = sources.map((s) => `${s.label} ← ${s.folder}/${s.file}`).join(" · ");
 
   const prev = await readLedgerStore();
-  const merged = applySyncToStore(prev, parts, netWorth);
+  // 자산 현황 시트가 없는 파일이면 기존 순자산을 유지합니다.
+  const merged = applySyncToStore(prev, parts, netWorth ?? prev.netWorth);
   const saved = await writeLedgerStore(merged);
 
   return NextResponse.json({

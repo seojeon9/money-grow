@@ -217,7 +217,10 @@ export function parseNetWorthSnapshot(book: XLSX.WorkBook): NetWorthSnapshot | n
   const sheet = getSheet(book, name);
   if (!sheet) return null;
 
-  const rows = toMatrix(sheet);
+  // 아래 열 번호(1=B, 4=E, 8=I)는 A열 기준입니다. 시트 범위가 B3부터 시작해도 A1부터 읽어 위치를 맞춥니다.
+  const ref = sheet["!ref"];
+  const fromA1 = ref ? { ...sheet, "!ref": `A1:${ref.split(":").pop()}` } : sheet;
+  const rows = toMatrix(fromA1);
   let financeStart = -1;
   for (let i = 0; i < rows.length; i++) {
     const a = rows[i]?.[1];
@@ -241,6 +244,9 @@ export function parseNetWorthSnapshot(book: XLSX.WorkBook): NetWorthSnapshot | n
 
   const assets: BalanceLine[] = [];
   const debts: BalanceLine[] = [];
+  // 항목(분류) 칸은 병합 셀이라 그룹 첫 줄에만 값이 있으므로 윗줄 값을 이어받습니다.
+  let assetCategory = "";
+  let debtCategory = "";
 
   for (let r = headerRow + 1; r < rows.length; r++) {
     const row = rows[r];
@@ -248,7 +254,8 @@ export function parseNetWorthSnapshot(book: XLSX.WorkBook): NetWorthSnapshot | n
     const label1 = typeof c1 === "string" ? c1.trim() : "";
     if (label1 === "총자산") break;
 
-    const category = String(row?.[1] ?? "").trim() || "";
+    const category = (assetCategory = String(row?.[1] ?? "").trim() || assetCategory);
+    debtCategory = String(row?.[5] ?? "").trim() || debtCategory;
     const product = String(row?.[2] ?? "").trim() || "";
     const assetAmt = asNum(row?.[4]);
     const debtAmt = asNum(row?.[8]);
@@ -262,7 +269,7 @@ export function parseNetWorthSnapshot(book: XLSX.WorkBook): NetWorthSnapshot | n
     }
     if (debtAmt !== null && debtAmt !== 0) {
       debts.push({
-        category: String(row?.[5] ?? "").trim(),
+        category: debtCategory,
         name: String(row?.[6] ?? "").trim(),
         amount: debtAmt,
       });
