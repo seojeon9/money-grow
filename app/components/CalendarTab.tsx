@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ENTRY_LABELS, entryLabelsOf, mainCategoryOf, type Trip } from "@/lib/budget";
 import { isLedgerEntryCounted, type LedgerEntry } from "@/lib/excel/importBankExport";
 import type { SettlementGroup } from "@/lib/store/ledgerStore";
@@ -92,6 +92,24 @@ export default function CalendarTab({
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   /** 대분류 선택 팝업: 대상 거래와 위치 */
   const [picker, setPicker] = useState<{ entry: LedgerEntry; position: PickerPosition } | null>(null);
+  const openRowRef = useRef<HTMLLIElement | null>(null);
+
+  // 편집칸 바깥을 누르거나 Esc를 누르면 닫습니다. 대분류 팝업이 떠 있는 동안은 팝업만 닫히게 둡니다.
+  useEffect(() => {
+    if (!openRowId || picker) return;
+    const onPointer = (ev: MouseEvent) => {
+      if (openRowRef.current && !openRowRef.current.contains(ev.target as Node)) setOpenRowId(null);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setOpenRowId(null);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [openRowId, picker]);
   const [picked, setPicked] = useState<string[]>([]);
   const [draft, setDraft] = useState({ name: "", kind: "약속", startDate: "", endDate: "" });
 
@@ -341,7 +359,7 @@ export default function CalendarTab({
                 const memo = e.noteOverride ?? e.note ?? "";
                 const open = editable && openRowId === e.id;
                 return (
-                <li key={e.id ?? i} className="py-1">
+                <li key={e.id ?? i} ref={open ? openRowRef : undefined} className="py-1">
                 <div
                   role={editable ? "button" : undefined}
                   tabIndex={editable ? 0 : undefined}
