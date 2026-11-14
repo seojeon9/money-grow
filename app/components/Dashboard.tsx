@@ -788,8 +788,8 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           {(
             [
               ["home", "홈"],
-              ["ledger", "가계부"],
-              ["calendar", "캘린더"],
+              ["calendar", "가계부"],
+              ["ledger", "상세내역"],
               ["analysis", "분석"],
               ["settings", "설정"],
             ] as const

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Trip } from "@/lib/budget";
+import { mainCategoryOf, type Trip } from "@/lib/budget";
 import { isLedgerEntryCounted, type LedgerEntry } from "@/lib/excel/importBankExport";
 import type { SettlementGroup } from "@/lib/store/ledgerStore";
 
@@ -71,6 +71,7 @@ export default function CalendarTab({
 }) {
   const [month, setMonth] = useState(() => todayIso().slice(0, 7));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [draft, setDraft] = useState({ name: "", kind: "약속", startDate: "", endDate: "" });
 
@@ -91,6 +92,16 @@ export default function CalendarTab({
   }, [dayEntries, flowKind]);
 
   const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
+
+  /** 고른 날의 거래(정산 묶음은 합친 한 줄). 지출을 먼저, 시간순으로 보여줍니다. */
+  const dayRows = useMemo(() => {
+    if (!selectedDate) return [];
+    return dayEntries
+      .filter((e) => e.date === selectedDate)
+      .map((e) => ({ e, kind: flowKind(e) }))
+      .sort((a, b) => Number(b.kind === "spend") - Number(a.kind === "spend") || a.e.time.localeCompare(b.e.time));
+  }, [selectedDate, dayEntries, flowKind]);
+  const daySpend = dayRows.filter((r) => r.kind === "spend").reduce((s, r) => s - r.e.amount, 0);
 
   const panel = useMemo(() => {
     if (!selectedEvent) return null;
@@ -164,7 +175,7 @@ export default function CalendarTab({
       <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-zinc-800">
-            캘린더
+            가계부
             <InfoBadge text="여행·약속을 적어두고, 내가 먼저 계산한 돈과 친구들에게 받은 돈을 묶으면 실제로 내가 쓴 돈만 지출로 잡혀요. 여행 기간 지출은 여행/숙박으로 따로 계산돼요." />
           </h2>
           <div className="flex items-center gap-2">
@@ -195,6 +206,7 @@ export default function CalendarTab({
                 key={date}
                 type="button"
                 onClick={() => {
+                  setSelectedDate(date);
                   setDraft((prev) => ({ ...prev, startDate: date, endDate: date }));
                   selectEvent(dayEvents[0]?.id ?? null);
                 }}
@@ -267,6 +279,51 @@ export default function CalendarTab({
           </button>
         </div>
       </section>
+
+      {selectedDate ? (
+        <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold text-zinc-800">
+              {Number(selectedDate.slice(5, 7))}월 {Number(selectedDate.slice(8))}일 (
+              {WEEKDAYS[new Date(`${selectedDate}T00:00:00Z`).getUTCDay()]})
+              <InfoBadge text="그날의 거래예요. 내 계좌끼리 옮긴 돈·카드대금·투자는 회색으로 보이고 지출 합계에는 들어가지 않아요." />
+            </h2>
+            <span className="text-sm text-zinc-600">
+              지출 <span className="font-semibold tabular-nums text-zinc-900">{won(daySpend)}</span>
+            </span>
+          </div>
+          {dayRows.length === 0 ? (
+            <p className="py-6 text-center text-sm text-zinc-400">이 날은 거래가 없어요.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-zinc-100">
+              {dayRows.map(({ e, kind }, i) => (
+                <li
+                  key={e.id ?? i}
+                  className={`flex items-center gap-3 py-2 text-sm ${kind === "spend" || kind === "income" ? "" : "text-zinc-400"}`}
+                >
+                  <span className="w-12 shrink-0 tabular-nums text-zinc-500">{e.time.slice(0, 5)}</span>
+                  <span className="w-8 shrink-0 text-zinc-500">{e.sourceLabel}</span>
+                  <span className="w-20 shrink-0 truncate rounded bg-zinc-100 px-1.5 py-0.5 text-center text-xs text-zinc-600">
+                    {mainCategoryOf(e)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {e.description}
+                    {e.txType === "정산" ? <span className="ml-1 text-xs text-blue-700">정산</span> : null}
+                  </span>
+                  <span
+                    className={`shrink-0 tabular-nums ${
+                      kind === "spend" ? "text-zinc-900" : kind === "income" ? "text-emerald-700" : ""
+                    }`}
+                  >
+                    {e.amount > 0 ? "+" : ""}
+                    {won(e.amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       {selectedEvent && panel ? (
         <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
