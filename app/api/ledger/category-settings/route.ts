@@ -7,7 +7,7 @@ type Body =
   | { action: "rename"; oldName?: string; newName?: string }
   | { action: "delete"; name?: string }
   | { action: "budget-label"; key?: string; label?: string }
-  | { action: "trip-add"; name?: string; startDate?: string; endDate?: string }
+  | { action: "trip-add"; name?: string; kind?: string; startDate?: string; endDate?: string }
   | { action: "trip-delete"; id?: string };
 
 function clean(value: unknown): string {
@@ -115,11 +115,12 @@ export async function POST(req: Request) {
       const isDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
       if (!name || !isDate(startDate) || !isDate(endDate) || startDate > endDate) {
         return NextResponse.json(
-          { error: "여행 이름과 올바른 시작일·종료일이 필요합니다." },
+          { error: "일정 이름과 올바른 시작일·종료일이 필요합니다." },
           { status: 400 }
         );
       }
-      trips = [...trips, { id: crypto.randomUUID(), name, startDate, endDate }].sort((a, b) =>
+      const kind: "여행" | "약속" = body.kind === "약속" ? "약속" : "여행";
+      trips = [...trips, { id: crypto.randomUUID(), name, kind, startDate, endDate }].sort((a, b) =>
         b.startDate.localeCompare(a.startDate)
       );
     } else {

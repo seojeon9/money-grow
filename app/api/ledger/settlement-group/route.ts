@@ -45,3 +45,22 @@ export async function POST(req: Request) {
   });
   return NextResponse.json(storeToResponse(saved));
 }
+
+/** 합친 거래를 다시 풉니다(원래 거래는 그대로 남아 있음). */
+export async function DELETE(req: Request) {
+  let body: { groupId?: string };
+  try {
+    body = (await req.json()) as { groupId?: string };
+  } catch {
+    return NextResponse.json({ error: "JSON 본문이 필요합니다." }, { status: 400 });
+  }
+  const store = await readLedgerStore();
+  if (!store.settlementGroups.some((group) => group.id === body.groupId)) {
+    return NextResponse.json({ error: "정산 묶음을 찾을 수 없습니다." }, { status: 404 });
+  }
+  const saved = await writeLedgerStore({
+    ...store,
+    settlementGroups: store.settlementGroups.filter((group) => group.id !== body.groupId),
+  });
+  return NextResponse.json(storeToResponse(saved));
+}

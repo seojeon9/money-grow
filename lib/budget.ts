@@ -93,7 +93,8 @@ export function budgetPlanForMonth(plans: SavedBudgetPlan[], month: string): Sav
   );
 }
 
-export type Trip = { id: string; name: string; startDate: string; endDate: string };
+/** 캘린더 일정. 여행은 기간 지출을 여행/숙박으로 보고, 약속은 정산(n빵) 묶기용으로만 씁니다. kind가 없으면 예전 데이터라 여행입니다. */
+export type Trip = { id: string; name: string; kind?: "여행" | "약속"; startDate: string; endDate: string };
 
 export const TRAVEL_CATEGORY = "여행/숙박";
 
@@ -115,6 +116,7 @@ const NON_TRAVEL_CATEGORIES = new Set([
  * 사용자가 직접 바꾼 대분류(categoryMainOverride)가 있으면 그걸 그대로 둡니다.
  */
 export function applyTrips(entries: LedgerEntry[], trips: Trip[]): LedgerEntry[] {
+  trips = trips.filter((t) => (t.kind ?? "여행") === "여행");
   if (trips.length === 0) return entries;
   return entries.map((e) => {
     if (e.categoryMainOverride?.trim() || e.txType !== "지출") return e;

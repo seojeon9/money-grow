@@ -35,6 +35,7 @@ import {
   type Trip,
 } from "@/lib/budget";
 import type { CategorySettings, NetWorthPoint, SettlementGroup } from "@/lib/store/ledgerStore";
+import CalendarTab from "./CalendarTab";
 
 type LedgerApiPayload = {
   ledger?: LedgerEntry[];
@@ -115,7 +116,7 @@ type Props = {
 };
 
 export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
-  const [activeTab, setActiveTab] = useState<"home" | "ledger" | "analysis" | "settings">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "ledger" | "calendar" | "analysis" | "settings">("home");
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [netWorth, setNetWorth] = useState<NetWorthSnapshot | null>(null);
   const [netWorthHistory, setNetWorthHistory] = useState<NetWorthPoint[]>([]);
@@ -160,7 +161,6 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   const [budgetMonth, setBudgetMonth] = useState<string>(currentMonthKey);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [trips, setTrips] = useState<Trip[]>([]);
-  const [tripDraft, setTripDraft] = useState({ name: "", startDate: "", endDate: "" });
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [expandedBudgetPlanId, setExpandedBudgetPlanId] = useState<string | null>(null);
   const [reusePlanId, setReusePlanId] = useState<string | null>(null);
@@ -653,26 +653,40 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       .finally(() => setNoteBusyId(null));
   }, [settlementView.detailsByGroupId]);
 
-  const saveSettlementGroup = useCallback(() => {
-    setMergeBusyRow("settlement-save");
-    setError(null);
-    fetch("/api/ledger/settlement-group", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memberIds: selectedSettlementIds }),
-    })
-      .then(async (res) => {
-        const j = (await res.json()) as LedgerApiPayload;
-        if (!res.ok) throw new Error(j.error ?? res.statusText);
-        setLedger(j.ledger ?? []);
-        setSettlementGroups(j.settlementGroups ?? []);
-        setSelectedSettlementIds([]);
-        setSettlementMode(false);
-        setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
+  /** 정산 묶기(POST)·풀기(DELETE). 성공하면 true. */
+  const requestSettlement = useCallback(
+    (method: "POST" | "DELETE", body: { memberIds?: string[]; groupId?: string }) => {
+      setMergeBusyRow("settlement-save");
+      setError(null);
+      return fetch("/api/ledger/settlement-group", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setMergeBusyRow(null));
-  }, [selectedSettlementIds]);
+        .then(async (res) => {
+          const j = (await res.json()) as LedgerApiPayload;
+          if (!res.ok) throw new Error(j.error ?? res.statusText);
+          setLedger(j.ledger ?? []);
+          setSettlementGroups(j.settlementGroups ?? []);
+          setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
+          return true;
+        })
+        .catch((err: Error) => {
+          setError(err.message);
+          return false;
+        })
+        .finally(() => setMergeBusyRow(null));
+    },
+    []
+  );
+
+  const saveSettlementGroup = useCallback(() => {
+    void requestSettlement("POST", { memberIds: selectedSettlementIds }).then((ok) => {
+      if (!ok) return;
+      setSelectedSettlementIds([]);
+      setSettlementMode(false);
+    });
+  }, [requestSettlement, selectedSettlementIds]);
 
   const topCategories = useMemo(() => {
     const m = new Map<string, number>();
@@ -760,6 +774,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             [
               ["home", "홈"],
               ["ledger", "가계부"],
+              ["calendar", "캘린더"],
               ["analysis", "분석"],
               ["settings", "설정"],
             ] as const
@@ -892,71 +907,6 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   </label>
                 ))}
               </div>
-              <h3 className="mt-6 text-sm font-semibold text-zinc-800">
-                여행 기간
-                <InfoBadge text="여행 기간에 쓴 식비·교통·쇼핑 등은 여행/숙박으로 계산해서 예산에서 빠져요. 월세·대출·보험·저축·투자·목적자금과 직접 바꾼 분류는 그대로예요." />
-              </h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <input
-                  type="text"
-                  value={tripDraft.name}
-                  onChange={(event) => setTripDraft((prev) => ({ ...prev, name: event.target.value }))}
-                  placeholder="여행 이름"
-                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                />
-                <input
-                  type="date"
-                  value={tripDraft.startDate}
-                  onChange={(event) => setTripDraft((prev) => ({ ...prev, startDate: event.target.value }))}
-                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                />
-                <input
-                  type="date"
-                  value={tripDraft.endDate}
-                  min={tripDraft.startDate || undefined}
-                  onChange={(event) => setTripDraft((prev) => ({ ...prev, endDate: event.target.value }))}
-                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                />
-                <button
-                  type="button"
-                  disabled={
-                    settingsBusy ||
-                    !tripDraft.name.trim() ||
-                    !tripDraft.startDate ||
-                    !tripDraft.endDate ||
-                    tripDraft.startDate > tripDraft.endDate
-                  }
-                  onClick={() => {
-                    void updateCategorySettings({ action: "trip-add", ...tripDraft });
-                    setTripDraft({ name: "", startDate: "", endDate: "" });
-                  }}
-                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  여행 추가
-                </button>
-              </div>
-              <ul className="mt-3 space-y-2">
-                {trips.map((trip) => (
-                  <li key={trip.id} className="flex items-center gap-2 rounded-lg border border-zinc-200 p-2 text-sm">
-                    <span className="font-medium text-zinc-800">{trip.name}</span>
-                    <span className="flex-1 text-zinc-500">
-                      {trip.startDate} ~ {trip.endDate}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={settingsBusy}
-                      onClick={() => {
-                        if (window.confirm(`'${trip.name}' 여행 기간을 삭제할까요?`)) {
-                          void updateCategorySettings({ action: "trip-delete", id: trip.id });
-                        }
-                      }}
-                      className="rounded px-2 py-1 text-xs text-zinc-400 hover:bg-red-50 hover:text-red-700"
-                    >
-                      삭제
-                    </button>
-                  </li>
-                ))}
-              </ul>
             </section>
 
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -1401,6 +1351,20 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               </div>
             </section>
 
+            </div>
+            <div className={activeTab === "calendar" ? "contents" : "hidden"}>
+              <CalendarTab
+                ledger={tripLedger}
+                dayEntries={visibleEntries}
+                settlementGroups={settlementGroups}
+                events={trips}
+                flowKind={flowKind}
+                busy={settingsBusy || mergeBusyRow === "settlement-save"}
+                onAddEvent={(draft) => void updateCategorySettings({ action: "trip-add", ...draft })}
+                onDeleteEvent={(id) => void updateCategorySettings({ action: "trip-delete", id })}
+                onGroup={(memberIds) => requestSettlement("POST", { memberIds })}
+                onUngroup={(groupId) => void requestSettlement("DELETE", { groupId })}
+              />
             </div>
             <div className={activeTab === "home" ? "contents" : "hidden"}>
             <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
