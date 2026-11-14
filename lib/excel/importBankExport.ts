@@ -19,7 +19,7 @@ export type LedgerEntry = {
   noteOverride?: string;
   /** 사용자가 단 라벨(외식·배달 등). 없으면 소분류로 추정(entryLabelsOf), 빈 배열이면 라벨 없음. */
   labels?: string[];
-  /** 가계부 출처(예: 서정, 상윤). 단일 업로드는 빈 문자열. */
+  /** 가계부 출처(구성원 라벨, data/members.json). 단일 업로드는 빈 문자열. */
   sourceLabel: string;
   /**
    * visible: 합계·차트·목록에 포함.

@@ -194,6 +194,17 @@ npm run dev
 
 브라우저에서 [http://localhost:3000](http://localhost:3000)으로 접속합니다.
 
+구성원(출처 라벨과 엑셀 폴더)은 Git에 올리지 않는 `data/members.json`에 둡니다. 없으면 `구성원1`·`구성원2`를 씁니다.
+
+```json
+[
+  { "label": "구성원1", "folder": "member1" },
+  { "label": "구성원2", "folder": "member2" }
+]
+```
+
+각 구성원의 뱅크샐러드 엑셀은 `data/<folder>/`에 넣고 화면의 **동기화**를 누릅니다.
+
 프로덕션 검증:
 
 ```bash

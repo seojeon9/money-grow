@@ -1,4 +1,4 @@
-import { HOUSEHOLD_MEMBERS } from "@/lib/budget";
+import { readMembers } from "@/lib/members";
 import { parseWorkbookNodeBuffer } from "@/lib/excel/importBankExport";
 import {
   applyUploadToStore,
@@ -28,9 +28,10 @@ export async function POST(req: Request) {
 
   // 동기화 거래와 같은 라벨이어야 중복 판별이 맞습니다.
   const sourceLabel = String(form.get("sourceLabel") ?? "").trim();
-  if (!(HOUSEHOLD_MEMBERS as readonly string[]).includes(sourceLabel)) {
+  const labels = readMembers().map((m) => m.label);
+  if (!labels.includes(sourceLabel)) {
     return NextResponse.json(
-      { error: `sourceLabel은 ${HOUSEHOLD_MEMBERS.join(", ")} 중 하나여야 합니다.` },
+      { error: `sourceLabel은 ${labels.join(", ")} 중 하나여야 합니다.` },
       { status: 400 }
     );
   }

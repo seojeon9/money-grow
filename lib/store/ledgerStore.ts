@@ -13,6 +13,7 @@ import {
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "path";
+import { readMembers } from "@/lib/members";
 
 export type ImportRecord = {
   at: string;
@@ -513,6 +514,8 @@ export function storeToResponse(store: LedgerStoreV1) {
     categorySettings: store.categorySettings,
     settlementGroups: store.settlementGroups,
     netWorthHistory: netWorthHistory(),
+    /** 구성원 라벨(업로드 대상·부부 간 이체 판별) */
+    members: readMembers().map((m) => m.label),
     persistPath: "data/.moneygrow/moneygrow.db",
   };
 }

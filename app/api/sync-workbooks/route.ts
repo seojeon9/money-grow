@@ -14,20 +14,19 @@ import {
 } from "@/lib/store/ledgerStore";
 import { readdir, readFile, stat } from "fs/promises";
 import path from "path";
+import { readMembers } from "@/lib/members";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const SOURCE_DIRS: { folder: string; label: string }[] = [
-  { folder: "seojeong", label: "서정" },
-  { folder: "sangyun", label: "상윤" },
-];
+
 
 /**
- * data 폴더(서정·상윤)의 xlsx를 모두 읽어, 저장소에 없는 거래만 추가합니다(겹치는 기간은 키로 걸러짐).
+ * data 아래 구성원 폴더(data/members.json)의 xlsx를 모두 읽어, 저장소에 없는 거래만 추가합니다(겹치는 기간은 키로 걸러짐).
  * 순자산은 파일마다 기록으로 남기고, 현재 순자산은 사람별로 가장 최근에 내려받은 파일 기준입니다.
  */
 export async function GET() {
+  const SOURCE_DIRS = readMembers();
   const dataRoot = path.join(process.cwd(), "..", "data");
   const sources: { label: string; folder: string; file: string }[] = [];
   const parts: Array<{ label: string; ledger: LedgerEntry[]; file: string }> = [];
@@ -58,7 +57,7 @@ export async function GET() {
     return NextResponse.json(
       {
         error:
-          "동기화할 파일이 없습니다. money-grow/data/seojeong 과 data/sangyun 에 .xlsx 가 있는지 확인하세요.",
+          `동기화할 파일이 없습니다. ${SOURCE_DIRS.map((d) => `data/${d.folder}`).join(", ")} 에 .xlsx 가 있는지 확인하세요(구성원 설정: data/members.json).`,
       },
       { status: 404 }
     );

@@ -53,8 +53,6 @@ export function emptyBudgetPlan(): BudgetPlan {
   };
 }
 
-/** 가구 구성원(동기화 라벨). 서로 주고받은 이체는 가구 내부 이동으로 봅니다. */
-export const HOUSEHOLD_MEMBERS = ["서정", "상윤"] as const;
 
 /** 내 계좌 사이 이동·카드값 결제: 실제 소비는 카드 사용 건에 이미 잡혀 있으므로 집계에서 뺍니다. */
 const INTERNAL_CATEGORIES = new Set(["내계좌이체", "카드대금"]);
@@ -77,11 +75,13 @@ export function mainCategoryOf(e: LedgerEntry): string {
  */
 export function flowKindOf(
   e: LedgerEntry,
-  categoryMappings: BudgetPlan["categoryMappings"]
+  categoryMappings: BudgetPlan["categoryMappings"],
+  /** 가구 구성원 이름(data/members.json). 서로 주고받은 이체는 가구 내부 이동으로 봅니다. */
+  members: readonly string[] = []
 ): "internal" | "asset" | "income" | "spend" {
   const category = mainCategoryOf(e);
   if (INTERNAL_CATEGORIES.has(category)) return "internal";
-  if (category === "이체" && HOUSEHOLD_MEMBERS.some((name) => e.description.includes(name))) {
+  if (category === "이체" && members.some((name) => e.description.includes(name))) {
     return "internal";
   }
   if (ASSET_CATEGORIES.has(category) || categoryMappings[category] === "investmentSavings") {

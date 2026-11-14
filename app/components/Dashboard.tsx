@@ -33,7 +33,6 @@ import {
   payPeriodOf,
   refundedPairIds,
   flowKindOf,
-  HOUSEHOLD_MEMBERS,
   mainCategoryOf,
   applyTrips,
   type Trip,
@@ -55,6 +54,7 @@ type LedgerApiPayload = {
   budgetPlans?: SavedBudgetPlan[];
   categorySettings?: CategorySettings;
   netWorthHistory?: NetWorthPoint[];
+  members?: string[];
   error?: string;
 };
 
@@ -126,7 +126,9 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [uploadLabel, setUploadLabel] = useState<string>(HOUSEHOLD_MEMBERS[0]);
+  /** 구성원 라벨(서버의 data/members.json) */
+  const [members, setMembers] = useState<string[]>([]);
+  const [uploadLabel, setUploadLabel] = useState<string>("");
   /** 상세내역 보기 필터: 예산 항목별 또는 대분류별 */
   const [ledgerFilterMode, setLedgerFilterMode] = useState<"budget" | "category">("category");
   /** 예산별 필터에서 고른 예산 항목 키("none" = 예산 외). 비면 전체. */
@@ -178,6 +180,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           setLedger(j.ledger);
           setNetWorth(j.netWorth ?? null);
         setNetWorthHistory(j.netWorthHistory ?? []);
+        if (j.members?.length) {
+          setMembers(j.members);
+          setUploadLabel((prev) => prev || j.members![0]);
+        }
           setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
           setSettlementGroups(j.settlementGroups ?? []);
           setBudgetPlans(j.budgetPlans ?? []);
@@ -209,6 +215,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setLedger(j.ledger ?? []);
         setNetWorth(j.netWorth ?? null);
         setNetWorthHistory(j.netWorthHistory ?? []);
+        if (j.members?.length) {
+          setMembers(j.members);
+          setUploadLabel((prev) => prev || j.members![0]);
+        }
         setFileLabel(j.summaryLabel ?? f.name);
         setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
         setSettlementGroups(j.settlementGroups ?? []);
@@ -243,6 +253,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setLedger(j.ledger ?? []);
         setNetWorth(j.netWorth ?? null);
         setNetWorthHistory(j.netWorthHistory ?? []);
+        if (j.members?.length) {
+          setMembers(j.members);
+          setUploadLabel((prev) => prev || j.members![0]);
+        }
         setFileLabel(j.summaryLabel ?? "동기화");
         setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
         setSettlementGroups(j.settlementGroups ?? []);
@@ -377,8 +391,12 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
   const flowKind = useCallback(
     (entry: LedgerEntry) =>
-      flowKindOf(entry, budgetPlanForMonth(budgetPlans, payPeriodLabelOf(entry.date))?.categoryMappings ?? {}),
-    [budgetPlans]
+      flowKindOf(
+        entry,
+        budgetPlanForMonth(budgetPlans, payPeriodLabelOf(entry.date))?.categoryMappings ?? {},
+        members
+      ),
+    [budgetPlans, members]
   );
 
   const chartData = useMemo(() => {
@@ -897,7 +915,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               aria-label="업로드할 엑셀의 주인"
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800"
             >
-              {HOUSEHOLD_MEMBERS.map((name) => (
+              {members.map((name) => (
                 <option key={name} value={name}>
                   {name}
                 </option>
@@ -1155,7 +1173,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               <StatCard
                 label="순자산"
                 value={netWorth ? formatWon(netWorth.netWorth) : "—"}
-                hint="뱅크샐러드 자산 현황(서정+상윤)의 전체 자산 − 부채예요. 마지막 동기화 시점 기준이에요."
+                hint="뱅크샐러드 자산 현황(구성원 합계)의 전체 자산 − 부채예요. 마지막 동기화 시점 기준이에요."
               />
               <StatCard
                 label="현금성 자산"
@@ -1279,7 +1297,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                       <>
                         <span className="block font-semibold">빼고 계산하는 것</span>
                         <span className="block">· 내 계좌끼리 옮긴 돈(내계좌이체)</span>
-                        <span className="block">· 서정 ↔ 상윤 사이 이체</span>
+                        <span className="block">· 구성원(부부) 사이 이체</span>
                         <span className="block">· 카드대금 (카드 쓴 날 지출로 이미 잡혀요)</span>
                         {filterActive ? <span className="block">· 보기 필터에서 꺼둔 대분류</span> : null}
                         <span className="mt-1 block">지출은 환불을 뺀 금액이에요.</span>
@@ -1386,7 +1404,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <h2 className="text-lg font-semibold text-zinc-800">
                 순자산 추이
-                <InfoBadge text="엑셀을 내려받은 날마다 뱅크샐러드 자산 현황(서정+상윤)을 기록해요. 동기화하면 data 폴더의 엑셀이 모두 반영돼요." />
+                <InfoBadge text="엑셀을 내려받은 날마다 뱅크샐러드 자산 현황(구성원 합계)을 기록해요. 동기화하면 data 폴더의 엑셀이 모두 반영돼요." />
               </h2>
               <div className="mt-4 h-64 w-full min-w-0">
                 {netWorthHistory.length === 0 ? (
