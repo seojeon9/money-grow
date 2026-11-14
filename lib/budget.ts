@@ -159,3 +159,40 @@ export function applyCategoryRules(entries: LedgerEntry[], rules: CategoryRule[]
     return rule && rule.category !== e.categoryMain ? { ...e, categoryMainOverride: rule.category } : e;
   });
 }
+
+/** 환불을 원 결제와 짝지을 때 거슬러 올라가는 최대 일수 */
+const REFUND_LOOKBACK_DAYS = 60;
+
+/**
+ * 전액 환불·취소된 결제와 그 환불(지출 타입의 +금액)을 짝지어 둘의 id를 돌려줍니다.
+ * 같은 사람·같은 금액·환불일 이전 60일 안의 결제 중 내용이 같은 것, 없으면 결제수단이 같은 것 중 가장 가까운 날짜.
+ * 금액이 다른 부분 환불은 짝짓지 않습니다(지출을 줄이는 줄로 남김).
+ */
+export function refundedPairIds(entries: LedgerEntry[]): Set<string> {
+  const paired = new Set<string>();
+  const purchases = entries.filter((e) => e.id && e.txType === "지출" && e.amount < 0);
+  const refunds = entries
+    .filter((e) => e.id && e.txType === "지출" && e.amount > 0)
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  for (const r of refunds) {
+    const from = new Date(Date.parse(`${r.date}T00:00:00Z`) - REFUND_LOOKBACK_DAYS * 86400000).toISOString().slice(0, 10);
+    const candidates = purchases
+      .filter(
+        (p) =>
+          !paired.has(p.id as string) &&
+          p.sourceLabel === r.sourceLabel &&
+          p.amount === -r.amount &&
+          from <= p.date &&
+          p.date <= r.date
+      )
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const match =
+      candidates.find((p) => p.description === r.description) ??
+      candidates.find((p) => p.paymentMethod === r.paymentMethod);
+    if (match) {
+      paired.add(match.id as string);
+      paired.add(r.id as string);
+    }
+  }
+  return paired;
+}

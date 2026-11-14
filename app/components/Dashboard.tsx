@@ -28,6 +28,7 @@ import {
   type SavedBudgetPlan,
   budgetPlanEndDate,
   budgetPlanForMonth,
+  refundedPairIds,
   flowKindOf,
   HOUSEHOLD_MEMBERS,
   mainCategoryOf,
@@ -342,14 +343,14 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   }, [ledgerWithSettlements, hiddenSet]);
 
   const calendarHiddenSet = useMemo(() => new Set(calendarHidden), [calendarHidden]);
-  /** 가계부(달력)용 거래: 숨김 거래와 가계부 필터에서 끈 대분류를 뺍니다. */
-  const calendarEntries = useMemo(
-    () =>
-      ledgerWithSettlements
-        .filter(isLedgerEntryCounted)
-        .filter((e) => !calendarHiddenSet.has(mainCategoryOf(e))),
-    [ledgerWithSettlements, calendarHiddenSet]
-  );
+  /** 가계부(달력)용 거래: 숨김 거래, 가계부 필터에서 끈 대분류, 전액 환불된 결제와 그 환불을 뺍니다. */
+  const calendarEntries = useMemo(() => {
+    const refunded = refundedPairIds(ledgerWithSettlements.filter(isLedgerEntryCounted));
+    return ledgerWithSettlements
+      .filter(isLedgerEntryCounted)
+      .filter((e) => !(e.id && refunded.has(e.id)))
+      .filter((e) => !calendarHiddenSet.has(mainCategoryOf(e)));
+  }, [ledgerWithSettlements, calendarHiddenSet]);
 
   const flowKind = useCallback(
     (entry: LedgerEntry) =>
@@ -1014,7 +1015,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </div>
             <div className={activeTab === "calendar" ? "contents" : "hidden"}>
               {renderFilter({
-                hint: "가계부는 직접 조절할 수 있는 생활 지출만 보도록 걸러요. 체크를 끈 대분류는 달력과 날짜별 거래에서 빠지고, 이 설정은 저장돼요.",
+                hint: "가계부는 직접 조절할 수 있는 생활 지출만 보도록 걸러요. 체크를 끈 대분류와 전액 환불된 결제(결제·환불 둘 다)는 달력과 날짜별 거래에서 빠지고, 이 설정은 저장돼요.",
                 hidden: calendarHiddenSet,
                 onChange: saveCalendarHidden,
               })}
