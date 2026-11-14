@@ -80,7 +80,7 @@ export default function CalendarTab({
   busy: boolean;
   onAddEvent: (draft: { name: string; kind: string; startDate: string; endDate: string }) => void;
   onDeleteEvent: (id: string) => void;
-  onGroup: (memberIds: string[]) => Promise<boolean>;
+  onGroup: (memberIds: string[], eventId: string) => Promise<boolean>;
   onUngroup: (groupId: string) => void;
   onNote: (entry: LedgerEntry, note: string) => void;
   onLabels: (entry: LedgerEntry, labels: string[]) => void;
@@ -172,7 +172,14 @@ export default function CalendarTab({
     const grouped = new Set(settlementGroups.flatMap((g) => g.memberIds));
     const groups = settlementGroups
       .map((g) => ({ id: g.id, members: g.memberIds.map((id) => byId.get(id)).filter((e): e is LedgerEntry => !!e) }))
-      .filter((g) => g.members.some((e) => startDate <= e.date && e.date <= incomeEnd));
+      // 이 일정에 연결된 묶음, 그리고 연결 없이 만든 묶음 중 날짜가 겹치는 것
+      .filter((g) => {
+        const eventId = settlementGroups.find((x) => x.id === g.id)?.eventId;
+        // 연결된 일정이 지워졌으면 연결 없는 묶음처럼 날짜로 보여줍니다.
+        return eventId && events.some((ev) => ev.id === eventId)
+          ? eventId === selectedEvent.id
+          : g.members.some((e) => startDate <= e.date && e.date <= incomeEnd);
+      });
     const free = ledger.filter((e) => e.id && isLedgerEntryCounted(e) && !grouped.has(e.id));
     const expenses = free.filter(
       (e) => e.amount < 0 && flowKind(e) === "spend" && startDate <= e.date && e.date <= endDate
@@ -185,7 +192,7 @@ export default function CalendarTab({
         e.date <= incomeEnd
     );
     return { groups, expenses, incomes };
-  }, [selectedEvent, ledger, settlementGroups, flowKind]);
+  }, [selectedEvent, ledger, settlementGroups, flowKind, events]);
 
   /** 여행 일정: 기간 안에서 여행/숙박으로 잡힌 지출(환불 포함)을 한 묶음으로 */
   const tripSummary = useMemo(() => {
@@ -621,7 +628,7 @@ export default function CalendarTab({
               type="button"
               disabled={busy || picked.length < 2 || pickedSpend === 0}
               onClick={() => {
-                void onGroup(picked).then((ok) => ok && setPicked([]));
+                void onGroup(picked, selectedEvent.id).then((ok) => ok && setPicked([]));
               }}
               className="rounded-lg bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
             >
@@ -699,7 +706,7 @@ export default function CalendarTab({
               type="button"
               disabled={busy || picked.length < 2 || pickedSpend === 0}
               onClick={() => {
-                void onGroup(picked).then((ok) => ok && setPicked([]));
+                void onGroup(picked, selectedEvent.id).then((ok) => ok && setPicked([]));
               }}
               className="rounded-lg bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
             >

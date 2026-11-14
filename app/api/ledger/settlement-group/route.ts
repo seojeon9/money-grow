@@ -6,9 +6,9 @@ import {
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  let body: { memberIds?: string[] };
+  let body: { memberIds?: string[]; eventId?: string };
   try {
-    body = (await req.json()) as { memberIds?: string[] };
+    body = (await req.json()) as { memberIds?: string[]; eventId?: string };
   } catch {
     return NextResponse.json({ error: "JSON 본문이 필요합니다." }, { status: 400 });
   }
@@ -38,6 +38,7 @@ export async function POST(req: Request) {
     id: crypto.randomUUID(),
     createdAt: now,
     memberIds,
+    ...(typeof body.eventId === "string" && body.eventId ? { eventId: body.eventId } : {}),
   };
   const saved = await writeLedgerStore({
     ...store,

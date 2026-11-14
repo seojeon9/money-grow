@@ -30,6 +30,8 @@ export type SettlementGroup = {
   id: string;
   createdAt: string;
   memberIds: string[];
+  /** 연결된 달력 일정(약속·여행) id. 없으면 날짜가 겹치는 일정에 보여줍니다. */
+  eventId?: string;
 };
 
 export type CategorySettings = {
@@ -131,6 +133,8 @@ function getDb(): DatabaseSync {
   // 라벨(외식·배달 등) 칸은 나중에 추가됐습니다. 예전 DB에는 칸을 붙입니다.
   const cols = db.prepare("PRAGMA table_info(entries)").all() as { name: string }[];
   if (!cols.some((c) => c.name === "labels")) db.exec("ALTER TABLE entries ADD COLUMN labels TEXT");
+  const groupCols = db.prepare("PRAGMA table_info(settlement_groups)").all() as { name: string }[];
+  if (!groupCols.some((c) => c.name === "event_id")) db.exec("ALTER TABLE settlement_groups ADD COLUMN event_id TEXT");
   // 예전 버전에서 들어온 거래는 id가 없어 화면에서 분류·메모·정산을 할 수 없었습니다.
   db.exec("UPDATE entries SET id = lower(hex(randomblob(16))) WHERE id IS NULL");
   const initialized = db.prepare("SELECT 1 FROM meta WHERE key = 'updatedAt'").get();
@@ -186,12 +190,12 @@ function saveStore(d: DatabaseSync, store: LedgerStoreV1) {
         e.labels ? JSON.stringify(e.labels) : null
       );
     }
-    const insGroup = d.prepare("INSERT INTO settlement_groups (id, created_at) VALUES (?, ?)");
+    const insGroup = d.prepare("INSERT INTO settlement_groups (id, created_at, event_id) VALUES (?, ?, ?)");
     const insMember = d.prepare(
       "INSERT INTO settlement_members (group_id, entry_id, ord) VALUES (?, ?, ?)"
     );
     for (const g of store.settlementGroups) {
-      insGroup.run(g.id, g.createdAt);
+      insGroup.run(g.id, g.createdAt, g.eventId ?? null);
       g.memberIds.forEach((entryId, i) => insMember.run(g.id, entryId, i));
     }
     const insPlan = d.prepare(
@@ -254,11 +258,12 @@ function loadStore(d: DatabaseSync): LedgerStoreV1 {
     .prepare("SELECT group_id, entry_id FROM settlement_members ORDER BY group_id, ord")
     .all() as Row[];
   const settlementGroups = (
-    d.prepare("SELECT id, created_at FROM settlement_groups ORDER BY rowid").all() as Row[]
+    d.prepare("SELECT id, created_at, event_id FROM settlement_groups ORDER BY rowid").all() as Row[]
   ).map((g) => ({
     id: g.id as string,
     createdAt: g.created_at as string,
     memberIds: members.filter((m) => m.group_id === g.id).map((m) => m.entry_id as string),
+    ...(g.event_id ? { eventId: g.event_id as string } : {}),
   }));
   const budgetPlans = (
     d.prepare("SELECT * FROM budget_plans ORDER BY rowid").all() as Row[]

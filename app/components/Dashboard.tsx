@@ -696,7 +696,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
   /** 정산 묶기(POST)·풀기(DELETE). 성공하면 true. */
   const requestSettlement = useCallback(
-    (method: "POST" | "DELETE", body: { memberIds?: string[]; groupId?: string }) => {
+    (method: "POST" | "DELETE", body: { memberIds?: string[]; groupId?: string; eventId?: string }) => {
       setMergeBusyRow("settlement-save");
       setError(null);
       return fetch("/api/ledger/settlement-group", {
@@ -1131,7 +1131,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                 busy={settingsBusy || mergeBusyRow === "settlement-save"}
                 onAddEvent={(draft) => void updateCategorySettings({ action: "trip-add", ...draft })}
                 onDeleteEvent={(id) => void updateCategorySettings({ action: "trip-delete", id })}
-                onGroup={(memberIds) => requestSettlement("POST", { memberIds })}
+                onGroup={(memberIds, eventId) => requestSettlement("POST", { memberIds, eventId })}
                 onUngroup={(groupId) => void requestSettlement("DELETE", { groupId })}
                 onNote={updateEntryNote}
                 onLabels={updateEntryLabels}
