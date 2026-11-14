@@ -72,7 +72,6 @@ export async function POST(req: Request) {
     : [...store.budgetPlans, plan];
   const saved = await writeLedgerStore({
     ...store,
-    budgetPlan: { startDate, endDate, fixedSalary, amounts, categoryMappings },
     budgetPlans,
     activeBudgetPlanId: plan.id,
   });

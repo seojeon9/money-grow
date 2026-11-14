@@ -35,13 +35,6 @@ export async function POST(req: Request) {
   };
   const saved = await writeLedgerStore({
     ...store,
-    budgetPlan: {
-      startDate: plan.startDate,
-      endDate: plan.endDate,
-      fixedSalary: plan.fixedSalary,
-      amounts: plan.amounts,
-      categoryMappings: plan.categoryMappings,
-    },
     budgetPlans: [...store.budgetPlans, plan],
     activeBudgetPlanId: plan.id,
   });

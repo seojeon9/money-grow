@@ -40,7 +40,6 @@ export type LedgerStoreV1 = {
   entries: LedgerEntry[];
   netWorth: NetWorthSnapshot | null;
   importLog: ImportRecord[];
-  budgetPlan: BudgetPlan;
   budgetPlans: SavedBudgetPlan[];
   activeBudgetPlanId: string | null;
   categorySettings: CategorySettings;
@@ -111,6 +110,8 @@ function getDb(): DatabaseSync {
   db = new DatabaseSync(DB_PATH);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  // 예전 버전에서 들어온 거래는 id가 없어 화면에서 분류·메모·정산을 할 수 없었습니다.
+  db.exec("UPDATE entries SET id = lower(hex(randomblob(16))) WHERE id IS NULL");
   const initialized = db.prepare("SELECT 1 FROM meta WHERE key = 'updatedAt'").get();
   if (!initialized) {
     const legacy = existsSync(LEGACY_JSON_PATH)
@@ -192,7 +193,6 @@ function saveStore(d: DatabaseSync, store: LedgerStoreV1) {
     const insMeta = d.prepare("INSERT INTO meta (key, value) VALUES (?, ?)");
     insMeta.run("updatedAt", JSON.stringify(store.updatedAt));
     insMeta.run("netWorth", JSON.stringify(store.netWorth));
-    insMeta.run("budgetPlan", JSON.stringify(store.budgetPlan));
     insMeta.run("activeBudgetPlanId", JSON.stringify(store.activeBudgetPlanId));
     insMeta.run("categorySettings", JSON.stringify(store.categorySettings));
   });
@@ -258,7 +258,6 @@ function loadStore(d: DatabaseSync): LedgerStoreV1 {
     entries,
     netWorth: meta.netWorth ?? null,
     importLog,
-    budgetPlan: meta.budgetPlan ?? emptyBudgetPlan(),
     budgetPlans,
     activeBudgetPlanId: meta.activeBudgetPlanId ?? null,
     categorySettings: meta.categorySettings,
@@ -278,7 +277,6 @@ function emptyStore(): LedgerStoreV1 {
     entries: [],
     netWorth: null,
     importLog: [],
-    budgetPlan: emptyBudgetPlan(),
     budgetPlans: [],
     activeBudgetPlanId: null,
     categorySettings: {
@@ -293,7 +291,7 @@ function emptyStore(): LedgerStoreV1 {
 function normalizeLegacyStore(j: LedgerStoreV1): LedgerStoreV1 {
   {
     if (j.version !== 1 || !Array.isArray(j.entries)) return emptyStore();
-    const rawBudget = j.budgetPlan as unknown as
+    const rawBudget = (j as unknown as { budgetPlan?: unknown }).budgetPlan as
       | {
           startDate?: string;
           endDate?: string;
@@ -362,7 +360,6 @@ function normalizeLegacyStore(j: LedgerStoreV1): LedgerStoreV1 {
       entries: j.entries.map(normalizeEntryStatus),
       importLog: Array.isArray(j.importLog) ? j.importLog : [],
       settlementGroups: Array.isArray(j.settlementGroups) ? j.settlementGroups : [],
-      budgetPlan: normalizedBudget,
       budgetPlans,
       activeBudgetPlanId:
         j.activeBudgetPlanId ??
@@ -414,13 +411,21 @@ export function mergeLedgerAdditive(existing: LedgerEntry[], incoming: LedgerEnt
   return existing.concat(toAdd);
 }
 
+/** 현재 적용 중인 예산(budgetPlans 안의 activeBudgetPlanId)을 화면용 BudgetPlan으로 꺼냅니다. */
+function activeBudgetPlan(store: LedgerStoreV1): BudgetPlan {
+  const plan = store.budgetPlans.find((p) => p.id === store.activeBudgetPlanId);
+  if (!plan) return emptyBudgetPlan();
+  const { startDate, endDate, fixedSalary, amounts, categoryMappings } = plan;
+  return { startDate, endDate, fixedSalary, amounts, categoryMappings };
+}
+
 export function storeToResponse(store: LedgerStoreV1) {
   return {
     ledger: store.entries,
     netWorth: store.netWorth,
     updatedAt: store.updatedAt,
     importLog: store.importLog.slice(-30).reverse(),
-    budgetPlan: store.budgetPlan,
+    budgetPlan: activeBudgetPlan(store),
     budgetPlans: store.budgetPlans,
     activeBudgetPlanId: store.activeBudgetPlanId,
     categorySettings: store.categorySettings,
@@ -459,7 +464,6 @@ export function applySyncToStore(
     entries,
     netWorth,
     importLog: log.slice(-200),
-    budgetPlan: prev.budgetPlan,
     budgetPlans: prev.budgetPlans,
     activeBudgetPlanId: prev.activeBudgetPlanId,
     categorySettings: prev.categorySettings,
@@ -495,7 +499,6 @@ export function applyUploadToStore(
     entries,
     netWorth: prev.netWorth,
     importLog: log.slice(-200),
-    budgetPlan: prev.budgetPlan,
     budgetPlans: prev.budgetPlans,
     activeBudgetPlanId: prev.activeBudgetPlanId,
     categorySettings: prev.categorySettings,

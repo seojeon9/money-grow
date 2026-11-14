@@ -19,7 +19,6 @@ import {
   type NetWorthSnapshot,
   isLedgerEntryCounted,
   ledgerEntryStableKey,
-  monthlyFlowsFromLedger,
 } from "@/lib/excel/importBankExport";
 import {
   BUDGET_ITEM_KEYS,
@@ -27,7 +26,11 @@ import {
   type BudgetItemKey,
   type BudgetPlan,
   type SavedBudgetPlan,
+  budgetPlanForMonth,
   emptyBudgetPlan,
+  flowKindOf,
+  HOUSEHOLD_MEMBERS,
+  mainCategoryOf,
 } from "@/lib/budget";
 import type { CategorySettings, SettlementGroup } from "@/lib/store/ledgerStore";
 
@@ -95,11 +98,6 @@ function formatWon(n: number) {
   return won.format(n);
 }
 
-function mainCategoryOf(e: LedgerEntry): string {
-  const c = e.categoryMainOverride?.trim() || e.categoryMain?.trim();
-  return c || "기타";
-}
-
 function noteOf(e: LedgerEntry): string {
   return e.noteOverride ?? e.note ?? "";
 }
@@ -123,6 +121,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadLabel, setUploadLabel] = useState<string>(HOUSEHOLD_MEMBERS[0]);
   const [hiddenMainCategories, setHiddenMainCategories] = useState<string[]>([
     ...DEFAULT_HIDDEN_MAIN_CATEGORIES,
   ]);
@@ -188,7 +187,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     setLoading(true);
     const fd = new FormData();
     fd.append("file", f);
-    fd.append("sourceLabel", "업로드");
+    fd.append("sourceLabel", uploadLabel);
     fetch("/api/ledger/upload", { method: "POST", body: fd })
       .then(async (res) => {
         const j = (await res.json()) as LedgerApiPayload;
@@ -215,7 +214,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setLoading(false);
         e.target.value = "";
       });
-  }, []);
+  }, [uploadLabel]);
 
   const syncFromDataFolders = useCallback(() => {
     setLoading(true);
@@ -333,40 +332,33 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       .filter((e) => !hiddenSet.has(mainCategoryOf(e)));
   }, [ledgerWithSettlements, hiddenSet]);
 
-  const isInvestmentSavingEntry = useCallback(
-    (entry: LedgerEntry) => {
-      const category = mainCategoryOf(entry);
-      return (
-        category === "투자" ||
-        category === "저축" ||
-        budgetPlan.categoryMappings[category] === "investmentSavings"
-      );
-    },
+  const flowKind = useCallback(
+    (entry: LedgerEntry) => flowKindOf(entry, budgetPlan.categoryMappings),
     [budgetPlan.categoryMappings]
   );
 
-  const cashFlowEntries = useMemo(
-    () =>
-      visibleEntries.map((entry) =>
-        entry.amount < 0 && isInvestmentSavingEntry(entry)
-          ? { ...entry, amount: Math.abs(entry.amount) }
-          : entry
-      ),
-    [isInvestmentSavingEntry, visibleEntries]
-  );
-
-  const monthly = useMemo(() => monthlyFlowsFromLedger(cashFlowEntries), [cashFlowEntries]);
-
-  const chartData = useMemo(
-    () =>
-      monthly.map((m) => ({
-        월: m.month.slice(2),
-        수입: Math.round(m.income),
-        지출: Math.round(m.expense),
-        순현금흐름: Math.round(m.netCashFlow),
-      })),
-    [monthly]
-  );
+  const chartData = useMemo(() => {
+    const byMonth = new Map<string, { income: number; spend: number; asset: number }>();
+    for (const entry of visibleEntries) {
+      const kind = flowKind(entry);
+      if (kind === "internal") continue;
+      const month = entry.date.slice(0, 7);
+      const b = byMonth.get(month) ?? { income: 0, spend: 0, asset: 0 };
+      byMonth.set(month, b);
+      if (kind === "income") b.income += entry.amount;
+      else if (kind === "spend") b.spend -= entry.amount;
+      else b.asset -= entry.amount;
+    }
+    return Array.from(byMonth.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, b]) => ({
+        월: month.slice(2),
+        수입: Math.round(b.income),
+        지출: Math.round(b.spend),
+        자산형성: Math.round(b.asset),
+        순현금흐름: Math.round(b.income - b.spend),
+      }));
+  }, [flowKind, visibleEntries]);
 
   const monthsInData = useMemo(() => {
     const s = new Set<string>();
@@ -412,18 +404,24 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   }, [configuredCategories, ledger]);
 
   const budgetMonthOptions = useMemo(() => {
-    if (!budgetPlan.startDate || !budgetPlan.endDate) return [budgetMonth];
-    const startMonth = budgetPlan.startDate.slice(0, 7);
-    const endMonth = budgetPlan.endDate.slice(0, 7);
-    const months: string[] = [];
-    const cursor = new Date(`${startMonth}-01T00:00:00`);
-    const end = new Date(`${endMonth}-01T00:00:00`);
-    while (cursor <= end && months.length < 240) {
-      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
-      cursor.setMonth(cursor.getMonth() + 1);
+    const months = new Set<string>();
+    for (const plan of budgetPlans) {
+      const cursor = new Date(`${plan.startDate.slice(0, 7)}-01T00:00:00`);
+      const end = new Date(`${plan.endDate.slice(0, 7)}-01T00:00:00`);
+      while (cursor <= end && months.size < 600) {
+        months.add(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
     }
-    return months.reverse();
-  }, [budgetMonth, budgetPlan.endDate, budgetPlan.startDate]);
+    if (months.size === 0) return [budgetMonth];
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [budgetMonth, budgetPlans]);
+
+  /** 조회 월이 속한 예산 계획(월마다 그 달에 적용된 예산으로 평가) */
+  const monthPlan = useMemo(
+    () => budgetPlanForMonth(budgetPlans, budgetMonth),
+    [budgetMonth, budgetPlans]
+  );
 
   useEffect(() => {
     if (budgetMonthOptions.length > 0 && !budgetMonthOptions.includes(budgetMonth)) {
@@ -436,17 +434,20 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       BudgetItemKey,
       number
     >;
-    if (budgetPlan.startDate && budgetPlan.endDate) {
+    if (monthPlan) {
       for (const entry of ledgerWithSettlements) {
-        if (!isLedgerEntryCounted(entry) || entry.amount >= 0) continue;
-        if (entry.date < budgetPlan.startDate || entry.date > budgetPlan.endDate) continue;
+        if (!isLedgerEntryCounted(entry)) continue;
+        if (entry.date < monthPlan.startDate || entry.date > monthPlan.endDate) continue;
         if (!entry.date.startsWith(budgetMonth)) continue;
-        const item = budgetPlan.categoryMappings[mainCategoryOf(entry)];
-        if (item) spent[item] += Math.abs(entry.amount);
+        const item = monthPlan.categoryMappings[mainCategoryOf(entry)];
+        if (!item) continue;
+        // 투자·적금·저금은 납입액만, 소비 항목은 환불·취소(+금액)를 빼서 순사용액으로 계산합니다.
+        if (item === "investmentSavings" && entry.amount >= 0) continue;
+        spent[item] -= entry.amount;
       }
     }
     return MONTHLY_BUDGET_KEYS.map((key) => {
-      const budget = budgetPlan.amounts[key];
+      const budget = monthPlan?.amounts[key] ?? 0;
       const used = spent[key];
       return {
         key,
@@ -456,7 +457,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         rate: budget > 0 ? (used / budget) * 100 : 0,
       };
     });
-  }, [budgetMonth, budgetPlan, ledgerWithSettlements]);
+  }, [budgetMonth, monthPlan, ledgerWithSettlements]);
 
   const rolloverBudgetProgress = useMemo(() => {
     const today = localTodayIso();
@@ -474,11 +475,11 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
     if (elapsedMonths > 0) {
       for (const entry of ledgerWithSettlements) {
-        if (!isLedgerEntryCounted(entry) || entry.amount >= 0) continue;
+        if (!isLedgerEntryCounted(entry)) continue;
         if (entry.date < budgetPlan.startDate || entry.date > cutoff) continue;
         const item = budgetPlan.categoryMappings[mainCategoryOf(entry)];
         if (item === "personal" || item === "emergency") {
-          spent[item] += Math.abs(entry.amount);
+          spent[item] -= entry.amount;
         }
       }
     }
@@ -660,14 +661,15 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   const topCategories = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of visibleEntries) {
-      if (e.amount >= 0 || isInvestmentSavingEntry(e)) continue;
+      if (flowKind(e) !== "spend") continue;
       const key = mainCategoryOf(e);
-      m.set(key, (m.get(key) ?? 0) + Math.abs(e.amount));
+      m.set(key, (m.get(key) ?? 0) - e.amount);
     }
     return Array.from(m.entries())
+      .filter(([, amount]) => amount > 0)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8);
-  }, [isInvestmentSavingEntry, visibleEntries]);
+  }, [flowKind, visibleEntries]);
 
   const toggleCategoryVisible = useCallback((cat: string) => {
     setHiddenMainCategories((prev) =>
@@ -708,6 +710,18 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={uploadLabel}
+              onChange={(event) => setUploadLabel(event.target.value)}
+              aria-label="업로드할 엑셀의 주인"
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800"
+            >
+              {HOUSEHOLD_MEMBERS.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
             <label className="cursor-pointer rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-800">
               엑셀 업로드
               <input
@@ -1021,7 +1035,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               </div>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {monthlyBudgetProgress.map(({ key, budget }) => (
+                {MONTHLY_BUDGET_KEYS.map((key) => ({ key, budget: budgetPlan.amounts[key] })).map(({ key, budget }) => (
                   <div key={key} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
                     <label className="text-sm font-semibold text-zinc-800">
                       {budgetItemLabels[key]}
@@ -1344,9 +1358,11 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                 <div>
                   <h2 className="text-lg font-semibold text-zinc-800">예산 집행률</h2>
                   <p className="text-sm text-zinc-500">
-                    {budgetPlan.startDate && budgetPlan.endDate
-                      ? `${budgetPlan.startDate} ~ ${budgetPlan.endDate} 적용 예산`
-                      : "설정에서 예산 기간과 금액을 먼저 저장해 주세요."}
+                    {monthPlan
+                      ? `${monthPlan.startDate} ~ ${monthPlan.endDate} 적용 예산 · 소비 항목은 환불을 뺀 순사용액`
+                      : budgetPlans.length > 0
+                        ? "이 달에 적용된 예산이 없습니다. 설정에서 기간을 추가해 주세요."
+                        : "설정에서 예산 기간과 금액을 먼저 저장해 주세요."}
                   </p>
                 </div>
                 <label className="text-sm text-zinc-600">
@@ -1439,7 +1455,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm lg:col-span-2">
                 <h2 className="text-lg font-semibold text-zinc-800">월별 입금 · 지출</h2>
                 <p className="text-sm text-zinc-500">
-                  입금(+) / 출금(−) · 투자·저축 출금은 자산 형성액으로 보고 입금에 합산
+                  내 계좌·부부 간 이체와 카드대금은 제외 · 지출은 환불을 뺀 순액 · 자산형성은 투자·저축 납입에서 회수액을 뺀 순액
                   {filterActive ? " · 숨긴 대분류 제외" : ""}
                 </p>
                 <div className="mt-4 h-72 w-full min-w-0">
@@ -1466,6 +1482,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                         <Legend />
                         <Bar dataKey="수입" fill="#059669" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="지출" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="자산형성" fill="#2563eb" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   )}
@@ -1499,7 +1516,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <h2 className="text-lg font-semibold text-zinc-800">월별 순현금흐름</h2>
               <p className="text-sm text-zinc-500">
-                해당 월 입금·투자·저축 합 − 소비 지출 합
+                해당 월 수입 − 지출 (자산형성 전, 저축 여력)
                 {filterActive ? " · 숨긴 대분류 제외" : ""}
               </p>
               <div className="mt-4 h-64 w-full min-w-0">

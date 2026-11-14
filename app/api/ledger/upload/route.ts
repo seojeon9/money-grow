@@ -1,3 +1,4 @@
+import { HOUSEHOLD_MEMBERS } from "@/lib/budget";
 import { parseWorkbookNodeBuffer } from "@/lib/excel/importBankExport";
 import {
   applyUploadToStore,
@@ -24,7 +25,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "file 필드가 필요합니다." }, { status: 400 });
   }
 
-  const sourceLabel = String(form.get("sourceLabel") || "업로드").trim() || "업로드";
+  // 동기화 거래와 같은 라벨이어야 중복 판별이 맞습니다.
+  const sourceLabel = String(form.get("sourceLabel") ?? "").trim();
+  if (!(HOUSEHOLD_MEMBERS as readonly string[]).includes(sourceLabel)) {
+    return NextResponse.json(
+      { error: `sourceLabel은 ${HOUSEHOLD_MEMBERS.join(", ")} 중 하나여야 합니다.` },
+      { status: 400 }
+    );
+  }
   const fileName = file instanceof File && file.name ? file.name : "upload.xlsx";
 
   const buf = Buffer.from(await file.arrayBuffer());

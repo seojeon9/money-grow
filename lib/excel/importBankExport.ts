@@ -116,20 +116,20 @@ export function isLedgerEntryCounted(e: LedgerEntry): boolean {
   return e.status !== "hidden";
 }
 
-/** 저장·병합 시 같은 거래로 볼지 판별하는 키(status 제외 — 숨김 토글해도 동일 건으로 취급). */
+/**
+ * 저장·병합 시 같은 거래로 볼지 판별하는 키.
+ * 분류·메모는 뱅크샐러드 앱에서 나중에 바뀔 수 있어 넣지 않습니다(바뀌면 같은 거래가 새로 붙음).
+ */
 export function ledgerEntryStableKey(e: LedgerEntry): string {
   return [
     e.sourceLabel,
     e.date,
     e.time,
     e.txType,
-    e.categoryMain,
-    e.categorySub,
     e.description,
     String(e.amount),
     e.currency,
     e.paymentMethod,
-    e.note,
   ].join(LEDGER_DEDUPE_SEP);
 }
 

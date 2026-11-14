@@ -94,12 +94,10 @@ export async function POST(req: Request) {
         )
       )
     );
-    const budgetPlan = renameMappings(store.budgetPlan);
     const budgetPlans = store.budgetPlans.map(renameMappings);
     const saved = await writeLedgerStore({
       ...store,
       entries,
-      budgetPlan,
       budgetPlans,
       categorySettings: { ...store.categorySettings, categories },
     });
