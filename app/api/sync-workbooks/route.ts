@@ -6,7 +6,9 @@ import {
 } from "@/lib/excel/importBankExport";
 import {
   applySyncToStore,
+  type NetWorthSnapshotRecord,
   readLedgerStore,
+  recordNetWorthSnapshots,
   storeToResponse,
   writeLedgerStore,
 } from "@/lib/store/ledgerStore";
@@ -73,6 +75,21 @@ export async function GET() {
     nwParts.push({ snapshot: parsed.netWorth, sourceLabel: label });
     sources.push({ label, folder, file: picked.name });
   }
+
+  // 폴더에 남아 있는 예전 파일까지 모두 읽어 순자산 기록으로 남깁니다(같은 파일은 덮어씀).
+  const history: NetWorthSnapshotRecord[] = [];
+  for (const { folder, label } of SOURCE_DIRS) {
+    const dir = path.join(dataRoot, folder);
+    const names = await readdir(dir).catch(() => [] as string[]);
+    for (const name of names.filter((n) => n.endsWith(".xlsx"))) {
+      const full = path.join(dir, name);
+      const parsed = parseWorkbookNodeBuffer(await readFile(full), label);
+      if (!parsed.netWorth) continue;
+      const exportedAt = parsed.exportedAt ?? new Date((await stat(full)).mtimeMs).toISOString();
+      history.push({ exportedAt, sourceLabel: label, file: `${folder}/${name}`, snapshot: parsed.netWorth });
+    }
+  }
+  recordNetWorthSnapshots(history);
 
   if (sources.length === 0) {
     return NextResponse.json(

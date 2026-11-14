@@ -3,6 +3,7 @@ import { parseWorkbookNodeBuffer } from "@/lib/excel/importBankExport";
 import {
   applyUploadToStore,
   readLedgerStore,
+  recordNetWorthSnapshots,
   storeToResponse,
   writeLedgerStore,
 } from "@/lib/store/ledgerStore";
@@ -10,7 +11,7 @@ import { NextResponse } from "next/server";
 
 /**
  * 엑셀 업로드 → 저장소에 없는 거래만 추가(기존 행 유지).
- * 순자산(netWorth)은 변경하지 않습니다(동기화 API에서만 갱신).
+ * 현재 순자산(netWorth)은 변경하지 않고(동기화 API에서만 갱신), 순자산 기록에만 남깁니다.
  */
 export async function POST(req: Request) {
   let form: FormData;
@@ -36,12 +37,19 @@ export async function POST(req: Request) {
   const fileName = file instanceof File && file.name ? file.name : "upload.xlsx";
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const { ledger } = parseWorkbookNodeBuffer(buf, sourceLabel);
+  const { ledger, netWorth, exportedAt } = parseWorkbookNodeBuffer(buf, sourceLabel);
   if (ledger.length === 0) {
     return NextResponse.json(
       { error: "가계부 시트를 찾지 못했거나 데이터가 없습니다." },
       { status: 400 }
     );
+  }
+
+  // 현재 순자산 카드는 동기화에서만 바꾸고, 기록에는 남깁니다.
+  if (netWorth) {
+    recordNetWorthSnapshots([
+      { exportedAt: exportedAt ?? new Date().toISOString(), sourceLabel, file: `업로드/${fileName}`, snapshot: netWorth },
+    ]);
   }
 
   const prev = await readLedgerStore();

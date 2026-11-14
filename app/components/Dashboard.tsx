@@ -34,7 +34,7 @@ import {
   applyTrips,
   type Trip,
 } from "@/lib/budget";
-import type { CategorySettings, SettlementGroup } from "@/lib/store/ledgerStore";
+import type { CategorySettings, NetWorthPoint, SettlementGroup } from "@/lib/store/ledgerStore";
 
 type LedgerApiPayload = {
   ledger?: LedgerEntry[];
@@ -47,6 +47,7 @@ type LedgerApiPayload = {
   budgetPlans?: SavedBudgetPlan[];
   activeBudgetPlanId?: string | null;
   categorySettings?: CategorySettings;
+  netWorthHistory?: NetWorthPoint[];
   error?: string;
 };
 
@@ -117,6 +118,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   const [activeTab, setActiveTab] = useState<"home" | "ledger" | "analysis" | "settings">("home");
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [netWorth, setNetWorth] = useState<NetWorthSnapshot | null>(null);
+  const [netWorthHistory, setNetWorthHistory] = useState<NetWorthPoint[]>([]);
   const [fileLabel, setFileLabel] = useState<string | null>(null);
   const [persistInfo, setPersistInfo] = useState<{ updatedAt: string | null; path: string | null }>(
     { updatedAt: null, path: null }
@@ -172,6 +174,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         if (j.ledger && j.ledger.length > 0) {
           setLedger(j.ledger);
           setNetWorth(j.netWorth ?? null);
+        setNetWorthHistory(j.netWorthHistory ?? []);
           setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
           setBudgetPlan(j.budgetPlan ?? emptyBudgetPlan());
           setSettlementGroups(j.settlementGroups ?? []);
@@ -202,6 +205,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setTxMonth(currentMonthKey());
         setLedger(j.ledger ?? []);
         setNetWorth(j.netWorth ?? null);
+        setNetWorthHistory(j.netWorthHistory ?? []);
         setFileLabel(j.summaryLabel ?? f.name);
         setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
         setBudgetPlan(j.budgetPlan ?? emptyBudgetPlan());
@@ -235,6 +239,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setTxMonth(currentMonthKey());
         setLedger(j.ledger ?? []);
         setNetWorth(j.netWorth ?? null);
+        setNetWorthHistory(j.netWorthHistory ?? []);
         setFileLabel(j.summaryLabel ?? "동기화");
         setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
         setBudgetPlan(j.budgetPlan ?? emptyBudgetPlan());
@@ -1623,6 +1628,53 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                         strokeWidth={2}
                         dot={false}
                       />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <h2 className="text-lg font-semibold text-zinc-800">순자산 추이</h2>
+              <p className="text-sm text-zinc-500">
+                엑셀을 내려받은 날짜별 서정+상윤 재무현황 합계 · 동기화하면 data 폴더의 파일이 모두 기록됩니다
+              </p>
+              <div className="mt-4 h-64 w-full min-w-0">
+                {netWorthHistory.length === 0 ? (
+                  <p className="flex h-full items-center justify-center text-sm text-zinc-400">
+                    아직 순자산 기록이 없습니다. 동기화를 눌러 주세요.
+                  </p>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%" minHeight={256}>
+                    <LineChart data={netWorthHistory} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+                      <XAxis dataKey="date" tick={{ fill: "#71717a", fontSize: 12 }} />
+                      <YAxis
+                        domain={["auto", "auto"]}
+                        tick={{ fill: "#71717a", fontSize: 11 }}
+                        tickFormatter={(v) => `${(v / 100000000).toFixed(2)}억`}
+                      />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          const point = payload?.[0]?.payload as NetWorthPoint | undefined;
+                          if (!active || !point) return null;
+                          return (
+                            <div className="rounded-lg border border-zinc-200 bg-white p-2 text-xs shadow">
+                              <p className="font-medium text-zinc-800">{point.date}</p>
+                              <p>순자산 {formatWon(point.netWorth)}</p>
+                              <p className="text-zinc-500">
+                                자산 {formatWon(point.totalAssets)} · 부채 {formatWon(point.totalDebt)}
+                              </p>
+                              {Object.entries(point.byPerson).map(([label, value]) => (
+                                <p key={label} className="text-zinc-500">
+                                  {label} {formatWon(value)}
+                                </p>
+                              ))}
+                            </div>
+                          );
+                        }}
+                      />
+                      <Line type="monotone" dataKey="netWorth" stroke="#047857" strokeWidth={2} dot />
                     </LineChart>
                   </ResponsiveContainer>
                 )}

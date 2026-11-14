@@ -321,14 +321,21 @@ export type ParsedWorkbook = {
   ledger: LedgerEntry[];
   monthly: MonthlyFlow[];
   netWorth: NetWorthSnapshot | null;
+  /** 엑셀을 내려받은 시각(파일 속성 생성일). 재무현황 잔액은 기간 끝날이 아니라 이 시점 기준입니다. */
+  exportedAt: string | null;
 };
+
+function exportedAtOf(book: XLSX.WorkBook): string | null {
+  const created = book.Props?.CreatedDate;
+  return created instanceof Date && !Number.isNaN(created.getTime()) ? created.toISOString() : null;
+}
 
 export function parseWorkbookBuffer(buf: ArrayBuffer, sourceLabel = ""): ParsedWorkbook {
   const book = XLSX.read(buf, { type: "array", cellDates: true });
   const ledger = parseLedger(book, sourceLabel);
   const monthly = monthlyFlowsFromLedger(ledger);
   const netWorth = parseNetWorthSnapshot(book);
-  return { ledger, monthly, netWorth };
+  return { ledger, monthly, netWorth, exportedAt: exportedAtOf(book) };
 }
 
 /** Node `Buffer`용 (API 라우트). */
@@ -337,5 +344,5 @@ export function parseWorkbookNodeBuffer(buf: Buffer, sourceLabel = ""): ParsedWo
   const ledger = parseLedger(book, sourceLabel);
   const monthly = monthlyFlowsFromLedger(ledger);
   const netWorth = parseNetWorthSnapshot(book);
-  return { ledger, monthly, netWorth };
+  return { ledger, monthly, netWorth, exportedAt: exportedAtOf(book) };
 }

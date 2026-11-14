@@ -99,6 +99,14 @@ CREATE TABLE IF NOT EXISTS import_log (
   seq INTEGER PRIMARY KEY,
   record TEXT NOT NULL
 );
+-- 순자산 기록: 사람별·내려받은 시각별 재무현황. 전체 저장(saveStore)이 지우지 않는 테이블입니다.
+CREATE TABLE IF NOT EXISTS net_worth_snapshots (
+  exported_at TEXT NOT NULL,
+  source_label TEXT NOT NULL,
+  file TEXT NOT NULL,
+  snapshot TEXT NOT NULL,
+  PRIMARY KEY (exported_at, source_label)
+);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -390,6 +398,60 @@ export function writeLedgerStore(store: LedgerStoreV1): LedgerStoreV1 {
   return next;
 }
 
+export type NetWorthSnapshotRecord = {
+  exportedAt: string;
+  sourceLabel: string;
+  file: string;
+  snapshot: NetWorthSnapshot;
+};
+
+/** 같은 파일(내려받은 시각·사람)을 다시 넣으면 덮어쓰고, 다른 시점 기록은 그대로 둡니다. */
+export function recordNetWorthSnapshots(records: NetWorthSnapshotRecord[]) {
+  const d = getDb();
+  const ins = d.prepare(
+    "INSERT OR REPLACE INTO net_worth_snapshots (exported_at, source_label, file, snapshot) VALUES (?, ?, ?, ?)"
+  );
+  inTransaction(d, () => {
+    for (const r of records) ins.run(r.exportedAt, r.sourceLabel, r.file, JSON.stringify(r.snapshot));
+  });
+}
+
+export type NetWorthPoint = {
+  date: string;
+  netWorth: number;
+  totalAssets: number;
+  totalDebt: number;
+  byPerson: Record<string, number>;
+};
+
+const kstDate = (iso: string) => new Date(Date.parse(iso) + 9 * 3600_000).toISOString().slice(0, 10);
+
+/**
+ * 날짜(한국 시간)별 가구 순자산. 그날까지 각 사람이 가장 최근에 내려받은 재무현황을 합칩니다.
+ * 한 사람만 내려받은 날은 다른 사람의 직전 기록을 이어 씁니다.
+ */
+export function netWorthHistory(): NetWorthPoint[] {
+  const rows = getDb()
+    .prepare("SELECT exported_at, source_label, snapshot FROM net_worth_snapshots ORDER BY exported_at")
+    .all() as Row[];
+  const latest = new Map<string, NetWorthSnapshot>();
+  const points = new Map<string, NetWorthPoint>();
+  for (const r of rows) {
+    latest.set(r.source_label as string, JSON.parse(r.snapshot as string));
+    const parts = Array.from(latest.entries());
+    const totalAssets = parts.reduce((s, [, x]) => s + x.totalAssets, 0);
+    const totalDebt = parts.reduce((s, [, x]) => s + x.totalDebt, 0);
+    points.set(kstDate(r.exported_at as string), {
+      date: kstDate(r.exported_at as string),
+      netWorth: totalAssets - totalDebt,
+      totalAssets,
+      totalDebt,
+      byPerson: Object.fromEntries(parts.map(([label, x]) => [label, x.netWorth])),
+    });
+  }
+  return Array.from(points.values());
+}
+
 /** ISO 날짜 문자열(YYYY-MM-DD) 최소·최대 */
 export function minMaxIsoDates(dates: string[]): { min: string; max: string } | null {
   const ok = dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
@@ -433,6 +495,7 @@ export function storeToResponse(store: LedgerStoreV1) {
     activeBudgetPlanId: store.activeBudgetPlanId,
     categorySettings: store.categorySettings,
     settlementGroups: store.settlementGroups,
+    netWorthHistory: netWorthHistory(),
     persistPath: "data/.moneygrow/moneygrow.db",
   };
 }
