@@ -1411,8 +1411,17 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               />
               <StatCard
                 label="자산 합계"
-                value={netWorth ? formatWon(netWorth.totalAssets) : "—"}
-                hint="뱅크샐러드 자산 현황의 계좌·투자·부동산 등을 합친 금액이에요."
+                value={
+                  netWorth
+                    ? formatWon(
+                        netWorth.totalAssets -
+                          netWorth.assets
+                            .filter((a) => a.category === "부동산")
+                            .reduce((sum, a) => sum + a.amount, 0)
+                      )
+                    : "—"
+                }
+                hint="뱅크샐러드 자산 현황의 계좌·적금·투자·연금 합계예요. 부동산은 빼고, 순자산에는 넣어요."
               />
               <StatCard
                 label="부채 합계"
