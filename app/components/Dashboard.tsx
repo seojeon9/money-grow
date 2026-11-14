@@ -39,6 +39,7 @@ import {
 import type { CategorySettings, NetWorthPoint, SettlementGroup } from "@/lib/store/ledgerStore";
 import BudgetSettings from "./BudgetSettings";
 import CalendarTab from "./CalendarTab";
+import CategoryPicker, { CategoryButton, pickerPositionFrom } from "./CategoryPicker";
 import InfoBadge from "./InfoBadge";
 
 type LedgerApiPayload = {
@@ -1552,36 +1553,20 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                                 {isSettlement ? (
                                   <span>{mainCategoryOf(e)}</span>
                                 ) : (
-                                  <button
-                                    type="button"
+                                  <CategoryButton
+                                    value={mainCategoryOf(e)}
+                                    open={categoryPickerId === e.id}
                                     disabled={categoryBusyId === e.id}
-                                    onClick={(event) => {
+                                    onClick={(rect) => {
                                       if (categoryPickerId === e.id) {
                                         setCategoryPickerId(null);
                                         setCategoryPickerPosition(null);
                                         return;
                                       }
-                                      const rect = event.currentTarget.getBoundingClientRect();
-                                      const width = Math.min(440, window.innerWidth - 24);
-                                      const left = Math.max(
-                                        12,
-                                        Math.min(rect.left, window.innerWidth - width - 12)
-                                      );
-                                      const estimatedHeight = 300;
-                                      const top =
-                                        rect.bottom + estimatedHeight <= window.innerHeight
-                                          ? rect.bottom + 6
-                                          : Math.max(12, rect.top - estimatedHeight - 6);
                                       setCategoryPickerId(e.id ?? null);
-                                      setCategoryPickerPosition({ top, left, width });
+                                      setCategoryPickerPosition(pickerPositionFrom(rect));
                                     }}
-                                    className="inline-flex min-w-28 items-center justify-between gap-2 rounded border border-zinc-200 bg-white px-2 py-1 text-left text-xs hover:border-emerald-500 hover:bg-emerald-50 disabled:opacity-50"
-                                  >
-                                    <span>{mainCategoryOf(e)}</span>
-                                    <span className="text-zinc-400">
-                                      {categoryPickerId === e.id ? "▴" : "▾"}
-                                    </span>
-                                  </button>
+                                  />
                                 )}
                               </td>
                               <td className="max-w-[160px] truncate py-2 pr-2 text-zinc-900" title={e.description}>
@@ -1698,59 +1683,17 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               </div>
 
               {categoryPickerEntry && categoryPickerPosition ? (
-                <>
-                  <button
-                    type="button"
-                    aria-label="대분류 선택 닫기"
-                    className="fixed inset-0 z-40 cursor-default bg-transparent"
-                    onClick={() => {
-                      setCategoryPickerId(null);
-                      setCategoryPickerPosition(null);
-                    }}
-                  />
-                  <div
-                    role="dialog"
-                    aria-label="대분류 선택"
-                    className="fixed z-50 rounded-xl border border-zinc-200 bg-white p-3 shadow-2xl"
-                    style={{
-                      top: categoryPickerPosition.top,
-                      left: categoryPickerPosition.left,
-                      width: categoryPickerPosition.width,
-                    }}
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold text-zinc-800">대분류 선택</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCategoryPickerId(null);
-                          setCategoryPickerPosition(null);
-                        }}
-                        className="rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
-                      >
-                        닫기
-                      </button>
-                    </div>
-                    <div className="grid max-h-64 grid-cols-4 gap-1.5 overflow-y-auto">
-                      {allMainCategories.map((category) => (
-                        <button
-                          key={category}
-                          type="button"
-                          disabled={categoryBusyId === categoryPickerEntry.id}
-                          onClick={() => updateEntryCategory(categoryPickerEntry, category)}
-                          className={`truncate rounded-md border px-2 py-2 text-xs ${
-                            category === mainCategoryOf(categoryPickerEntry)
-                              ? "border-emerald-600 bg-emerald-600 font-semibold text-white"
-                              : "border-zinc-200 bg-white text-zinc-700 hover:border-emerald-400 hover:bg-emerald-50"
-                          }`}
-                          title={category}
-                        >
-                          {category}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
+                <CategoryPicker
+                  categories={allMainCategories}
+                  current={mainCategoryOf(categoryPickerEntry)}
+                  position={categoryPickerPosition}
+                  disabled={categoryBusyId === categoryPickerEntry.id}
+                  onPick={(category) => updateEntryCategory(categoryPickerEntry, category)}
+                  onClose={() => {
+                    setCategoryPickerId(null);
+                    setCategoryPickerPosition(null);
+                  }}
+                />
               ) : null}
 
               {hiddenRowsForMonth.length > 0 ? (

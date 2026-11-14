@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ENTRY_LABELS, entryLabelsOf, mainCategoryOf, type Trip } from "@/lib/budget";
 import { isLedgerEntryCounted, type LedgerEntry } from "@/lib/excel/importBankExport";
 import type { SettlementGroup } from "@/lib/store/ledgerStore";
+import CategoryPicker, { CategoryButton, pickerPositionFrom, type PickerPosition } from "./CategoryPicker";
 import InfoBadge from "./InfoBadge";
 
 type FlowKind = "internal" | "asset" | "income" | "spend";
@@ -89,6 +90,8 @@ export default function CalendarTab({
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   /** 라벨·메모를 편집 중인 거래 */
   const [openRowId, setOpenRowId] = useState<string | null>(null);
+  /** 대분류 선택 팝업: 대상 거래와 위치 */
+  const [picker, setPicker] = useState<{ entry: LedgerEntry; position: PickerPosition } | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [draft, setDraft] = useState({ name: "", kind: "약속", startDate: "", endDate: "" });
 
@@ -379,18 +382,13 @@ export default function CalendarTab({
                 </div>
                 {open ? (
                   <div className="mb-2 ml-14 flex flex-wrap items-center gap-1.5 rounded-lg bg-zinc-50 p-2">
-                    <select
+                    <CategoryButton
                       value={mainCategoryOf(e)}
-                      aria-label="대분류"
-                      onChange={(ev) => onCategory(e, ev.target.value)}
-                      className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm"
-                    >
-                      {Array.from(new Set([mainCategoryOf(e), ...categories])).map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
+                      open={picker?.entry.id === e.id}
+                      onClick={(rect) =>
+                        setPicker(picker?.entry.id === e.id ? null : { entry: e, position: pickerPositionFrom(rect) })
+                      }
+                    />
                     <span className="mx-1 h-4 w-px bg-zinc-300" aria-hidden="true" />
                     {ENTRY_LABELS.map(({ name }) => {
                       const on = labels.includes(name);
@@ -430,6 +428,19 @@ export default function CalendarTab({
             </ul>
           )}
         </section>
+      ) : null}
+
+      {picker ? (
+        <CategoryPicker
+          categories={categories}
+          current={mainCategoryOf(picker.entry)}
+          position={picker.position}
+          onPick={(category) => {
+            onCategory(picker.entry, category);
+            setPicker(null);
+          }}
+          onClose={() => setPicker(null)}
+        />
       ) : null}
 
       {selectedEvent && panel ? (
