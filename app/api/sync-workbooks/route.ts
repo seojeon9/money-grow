@@ -23,71 +23,34 @@ const SOURCE_DIRS: { folder: string; label: string }[] = [
   { folder: "sangyun", label: "상윤" },
 ];
 
-async function pickLatestXlsx(dir: string): Promise<{ name: string; full: string } | null> {
-  let names: string[];
-  try {
-    names = await readdir(dir);
-  } catch {
-    return null;
-  }
-  const xlsx = names.filter((n) => n.endsWith(".xlsx"));
-  if (xlsx.length === 0) return null;
-  // 파일명 `시작일~종료일.xlsx`의 종료일이 가장 늦은 파일을 고르고, 같거나 없으면 수정 시각으로 비교합니다.
-  // 수정 시각만 보면 옛 기간 파일을 나중에 넣었을 때 그 파일이 "최신"으로 잡힙니다.
-  const endDateOf = (n: string) => n.match(/~(\d{4}-\d{2}-\d{2})/)?.[1] ?? "";
-  let best = xlsx[0];
-  let bestEnd = "";
-  let bestT = 0;
-  for (const n of xlsx) {
-    const full = path.join(dir, n);
-    try {
-      const st = await stat(full);
-      const end = endDateOf(n);
-      if (end > bestEnd || (end === bestEnd && st.mtimeMs >= bestT)) {
-        bestEnd = end;
-        bestT = st.mtimeMs;
-        best = n;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return { name: best, full: path.join(dir, best) };
-}
-
 /**
- * 디스크 최신 xlsx(서정·상윤)를 읽어, 저장소에 없는 거래만 추가합니다.
- * 순자산은 이번 동기화 결과로 갱신합니다.
+ * data 폴더(서정·상윤)의 xlsx를 모두 읽어, 저장소에 없는 거래만 추가합니다(겹치는 기간은 키로 걸러짐).
+ * 순자산은 파일마다 기록으로 남기고, 현재 순자산은 사람별로 가장 최근에 내려받은 파일 기준입니다.
  */
 export async function GET() {
   const dataRoot = path.join(process.cwd(), "..", "data");
   const sources: { label: string; folder: string; file: string }[] = [];
   const parts: Array<{ label: string; ledger: LedgerEntry[]; file: string }> = [];
   const nwParts: Array<{ snapshot: NetWorthSnapshot | null; sourceLabel: string }> = [];
-
-  for (const { folder, label } of SOURCE_DIRS) {
-    const dir = path.join(dataRoot, folder);
-    const picked = await pickLatestXlsx(dir);
-    if (!picked) continue;
-    const buf = await readFile(picked.full);
-    const parsed = parseWorkbookNodeBuffer(buf, label);
-    parts.push({ label, ledger: parsed.ledger, file: `${folder}/${picked.name}` });
-    nwParts.push({ snapshot: parsed.netWorth, sourceLabel: label });
-    sources.push({ label, folder, file: picked.name });
-  }
-
-  // 폴더에 남아 있는 예전 파일까지 모두 읽어 순자산 기록으로 남깁니다(같은 파일은 덮어씀).
   const history: NetWorthSnapshotRecord[] = [];
+
   for (const { folder, label } of SOURCE_DIRS) {
     const dir = path.join(dataRoot, folder);
-    const names = await readdir(dir).catch(() => [] as string[]);
-    for (const name of names.filter((n) => n.endsWith(".xlsx"))) {
+    const names = (await readdir(dir).catch(() => [] as string[])).filter((n) => n.endsWith(".xlsx")).sort();
+    let latest: { name: string; exportedAt: string; snapshot: NetWorthSnapshot | null } | null = null;
+    for (const name of names) {
       const full = path.join(dir, name);
       const parsed = parseWorkbookNodeBuffer(await readFile(full), label);
-      if (!parsed.netWorth) continue;
       const exportedAt = parsed.exportedAt ?? new Date((await stat(full)).mtimeMs).toISOString();
-      history.push({ exportedAt, sourceLabel: label, file: `${folder}/${name}`, snapshot: parsed.netWorth });
+      parts.push({ label, ledger: parsed.ledger, file: `${folder}/${name}` });
+      if (parsed.netWorth) {
+        history.push({ exportedAt, sourceLabel: label, file: `${folder}/${name}`, snapshot: parsed.netWorth });
+      }
+      if (!latest || exportedAt > latest.exportedAt) latest = { name, exportedAt, snapshot: parsed.netWorth };
     }
+    if (!latest) continue;
+    nwParts.push({ snapshot: latest.snapshot, sourceLabel: label });
+    sources.push({ label, folder, file: latest.name });
   }
   recordNetWorthSnapshots(history);
 
