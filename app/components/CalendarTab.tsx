@@ -38,6 +38,9 @@ function Sticker({ label }: { label: string }) {
   );
 }
 
+/** 여행 경비로 따로 묶는 거래(여행 기간 지출은 applyTrips에서 여행/숙박이 됨) */
+const isTravel = (e: LedgerEntry) => mainCategoryOf(e) === "여행/숙박";
+
 const won = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`;
 
 function addDays(iso: string, days: number): string {
@@ -124,7 +127,8 @@ export default function CalendarTab({
   const spendByDate = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of dayEntries) {
-      if (flowKind(e) === "spend") m.set(e.date, (m.get(e.date) ?? 0) - e.amount);
+      // 여행 경비는 여행 일정에 따로 모아 보여주고, 날짜 칸에는 생활 지출만 적습니다.
+      if (flowKind(e) === "spend" && !isTravel(e)) m.set(e.date, (m.get(e.date) ?? 0) - e.amount);
     }
     return m;
   }, [dayEntries, flowKind]);
@@ -153,7 +157,12 @@ export default function CalendarTab({
       .map((e) => ({ e, kind: flowKind(e) }))
       .sort((a, b) => Number(b.kind === "spend") - Number(a.kind === "spend") || a.e.time.localeCompare(b.e.time));
   }, [selectedDate, dayEntries, flowKind]);
-  const daySpend = dayRows.filter((r) => r.kind === "spend").reduce((s, r) => s - r.e.amount, 0);
+  const daySpend = dayRows
+    .filter((r) => r.kind === "spend" && !isTravel(r.e))
+    .reduce((s, r) => s - r.e.amount, 0);
+  const dayTravel = dayRows
+    .filter((r) => r.kind === "spend" && isTravel(r.e))
+    .reduce((s, r) => s - r.e.amount, 0);
 
   const panel = useMemo(() => {
     if (!selectedEvent) return null;
@@ -177,6 +186,27 @@ export default function CalendarTab({
     );
     return { groups, expenses, incomes };
   }, [selectedEvent, ledger, settlementGroups, flowKind]);
+
+  /** 여행 일정: 기간 안에서 여행/숙박으로 잡힌 지출(환불 포함)을 한 묶음으로 */
+  const tripSummary = useMemo(() => {
+    if (!selectedEvent || kindOf(selectedEvent) !== "여행") return null;
+    const rows = dayEntries
+      .filter(
+        (e) =>
+          isTravel(e) &&
+          flowKind(e) === "spend" &&
+          selectedEvent.startDate <= e.date &&
+          e.date <= selectedEvent.endDate
+      )
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    const byCategory = new Map<string, number>();
+    for (const e of rows) byCategory.set(e.categoryMain, (byCategory.get(e.categoryMain) ?? 0) - e.amount);
+    return {
+      rows,
+      total: rows.reduce((sum, e) => sum - e.amount, 0),
+      byCategory: Array.from(byCategory.entries()).sort((a, b) => b[1] - a[1]),
+    };
+  }, [selectedEvent, dayEntries, flowKind]);
 
   const pickedEntries = useMemo(
     () => ledger.filter((e) => e.id && picked.includes(e.id)),
@@ -228,7 +258,7 @@ export default function CalendarTab({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-zinc-800">
             가계부
-            <InfoBadge text="여행·약속을 적어두고, 내가 먼저 계산한 돈과 친구들에게 받은 돈을 묶으면 실제로 내가 쓴 돈만 지출로 잡혀요. 여행 기간 지출은 여행/숙박으로 따로 계산돼요." />
+            <InfoBadge text="여행을 등록하면 그 기간 지출이 여행 경비 한 묶음으로 모이고, 날짜 칸의 생활 지출에서는 빠져요. 약속은 내가 먼저 계산한 돈과 친구에게 받은 돈을 묶어 실제로 쓴 돈만 지출로 남겨요." />
           </h2>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => shiftMonth(-1)} className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm">
@@ -347,6 +377,11 @@ export default function CalendarTab({
             </h2>
             <span className="text-sm text-zinc-600">
               지출 <span className="font-semibold tabular-nums text-zinc-900">{won(daySpend)}</span>
+              {dayTravel !== 0 ? (
+                <span className="ml-3 text-sky-700">
+                  여행 <span className="font-semibold tabular-nums">{won(dayTravel)}</span>
+                </span>
+              ) : null}
             </span>
           </div>
           {dayRows.length === 0 ? (
@@ -486,6 +521,39 @@ export default function CalendarTab({
             </button>
           </div>
 
+          {kindOf(selectedEvent) === "여행" && tripSummary ? (
+            <>
+              <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <span className="text-sm text-zinc-600">
+                  여행 경비 <span className="text-xl font-semibold tabular-nums text-zinc-900">{won(tripSummary.total)}</span>
+                </span>
+                {tripSummary.byCategory.map(([category, amount]) => (
+                  <span key={category} className="text-xs text-zinc-500">
+                    {category} {won(amount)}
+                  </span>
+                ))}
+              </div>
+              <ul className="mt-3 max-h-80 divide-y divide-zinc-100 overflow-y-auto rounded-lg border border-zinc-200 px-2">
+                {tripSummary.rows.map((e) => (
+                  <li key={e.id} className="flex items-center gap-2 py-1.5 text-sm">
+                    <span className="w-12 shrink-0 tabular-nums text-zinc-500">{e.date.slice(5)}</span>
+                    <span className="w-8 shrink-0 text-zinc-500">{e.sourceLabel}</span>
+                    <span className="w-16 shrink-0 truncate text-xs text-zinc-400">{e.categoryMain}</span>
+                    <span className="min-w-0 flex-1 truncate text-zinc-800">{e.description}</span>
+                    <span className={`shrink-0 tabular-nums ${e.amount < 0 ? "text-zinc-900" : "text-blue-700"}`}>
+                      {e.amount > 0 ? "+" : ""}
+                      {won(e.amount)}
+                    </span>
+                  </li>
+                ))}
+                {tripSummary.rows.length === 0 ? (
+                  <li className="py-6 text-center text-sm text-zinc-400">이 기간에 여행으로 잡힌 지출이 없어요.</li>
+                ) : null}
+              </ul>
+              <details className="mt-4 rounded-lg border border-zinc-200 p-3">
+                <summary className="cursor-pointer text-sm font-semibold text-zinc-700">
+                  같이 간 사람과 나눈 돈 정산하기
+                </summary>
           {panel.groups.length > 0 ? (
             <div className="mt-4 space-y-2">
               <h3 className="text-sm font-semibold text-zinc-800">묶어둔 정산</h3>
@@ -560,6 +628,86 @@ export default function CalendarTab({
               정산 묶기 ({picked.length})
             </button>
           </div>
+              </details>
+            </>
+          ) : (
+            <>
+          {panel.groups.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              <h3 className="text-sm font-semibold text-zinc-800">묶어둔 정산</h3>
+              {panel.groups.map((g) => {
+                const net = g.members.reduce((s, e) => s + e.amount, 0);
+                return (
+                  <details key={g.id} className="rounded-lg border border-blue-200 bg-blue-50/40">
+                    <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm">
+                      <span className="flex-1 text-zinc-700">{g.members.length}건 묶음</span>
+                      <span className="font-semibold tabular-nums text-zinc-900">실제 지출 {won(-net)}</span>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={(ev) => {
+                          ev.preventDefault();
+                          if (window.confirm("이 정산 묶음을 풀까요? 원래 거래로 돌아가요.")) onUngroup(g.id);
+                        }}
+                        className="rounded px-2 py-0.5 text-xs text-zinc-400 hover:bg-red-50 hover:text-red-700"
+                      >
+                        풀기
+                      </button>
+                    </summary>
+                    <div className="border-t border-blue-100 px-1 py-1">{g.members.map((e) => entryRow(e, false))}</div>
+                  </details>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-800">
+                내가 계산한 돈 ({panel.expenses.length})
+                <InfoBadge text="일정 기간에 결제한 지출이에요. 친구들과 나눈 것만 골라 주세요." />
+              </h3>
+              <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-zinc-200 p-1">
+                {panel.expenses.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-zinc-400">이 기간에 묶지 않은 지출이 없어요.</p>
+                ) : (
+                  panel.expenses.map((e) => entryRow(e, true))
+                )}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-800">
+                받은 돈 ({panel.incomes.length})
+                <InfoBadge text={`일정 기간부터 끝난 뒤 ${INCOME_GRACE_DAYS}일까지 들어온 돈이에요. 친구들이 보내준 것만 골라 주세요.`} />
+              </h3>
+              <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-zinc-200 p-1">
+                {panel.incomes.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-zinc-400">이 기간에 들어온 돈이 없어요.</p>
+                ) : (
+                  panel.incomes.map((e) => entryRow(e, true))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-sm">
+            <span className="text-zinc-600">
+              계산 {won(pickedSpend)} − 받음 {won(pickedIncome)} ={" "}
+              <span className="font-semibold text-zinc-900">실제 지출 {won(pickedSpend - pickedIncome)}</span>
+            </span>
+            <button
+              type="button"
+              disabled={busy || picked.length < 2 || pickedSpend === 0}
+              onClick={() => {
+                void onGroup(picked).then((ok) => ok && setPicked([]));
+              }}
+              className="rounded-lg bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
+            >
+              정산 묶기 ({picked.length})
+            </button>
+          </div>
+            </>
+          )}
         </section>
       ) : null}
     </>
