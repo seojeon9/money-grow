@@ -977,46 +977,6 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               </div>
             </section>
 
-            <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-zinc-800">
-                    대분류 표시
-                    <InfoBadge text="체크를 끈 대분류는 차트·지출 TOP·거래내역에서 빠져요. 순자산은 바뀌지 않아요." />
-                  </h2>
-                </div>
-                {filterActive ? (
-                  <button
-                    type="button"
-                    onClick={() => setHiddenMainCategories([])}
-                    className="shrink-0 text-sm font-medium text-emerald-700 hover:text-emerald-900"
-                  >
-                    전체 다시 표시
-                  </button>
-                ) : null}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
-                {allMainCategories.map((cat) => {
-                  const visible = !hiddenSet.has(cat);
-                  return (
-                    <label
-                      key={cat}
-                      className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm hover:bg-zinc-100"
-                    >
-                      <input
-                        type="checkbox"
-                        className="rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
-                        checked={visible}
-                        onChange={() => toggleCategoryVisible(cat)}
-                      />
-                      <span className={visible ? "text-zinc-900" : "text-zinc-400 line-through"}>
-                        {cat}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </section>
 
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
@@ -1219,7 +1179,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
               <div className="mt-6">
                 <h3 className="text-sm font-semibold text-zinc-800">
-                  대분류 연결
+                  예산에 넣을 대분류
                   <InfoBadge text="연결하지 않은 대분류(여행/숙박·목적자금·가구/가전 등)는 예산 집행률에서 빠져요." />
                 </h3>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -1564,7 +1524,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
             {visibleEntries.length === 0 && ledger.filter(isLedgerEntryCounted).length > 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                표시할 거래가 없습니다. 대분류 표시를 확인하거나, 아래에서 숨김을 해제해 보세요.
+                표시할 거래가 없습니다. 상세내역의 보기 필터를 확인하거나, 숨김을 해제해 보세요.
               </div>
             ) : null}
 
@@ -1579,7 +1539,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                         <span className="block">· 내 계좌끼리 옮긴 돈(내계좌이체)</span>
                         <span className="block">· 서정 ↔ 상윤 사이 이체</span>
                         <span className="block">· 카드대금 (카드 쓴 날 지출로 이미 잡혀요)</span>
-                        {filterActive ? <span className="block">· 대분류 표시에서 꺼둔 대분류</span> : null}
+                        {filterActive ? <span className="block">· 보기 필터에서 꺼둔 대분류</span> : null}
                         <span className="mt-1 block">지출은 환불을 뺀 금액이에요.</span>
                         <span className="block">자산형성 = 투자·저축·집에 넣은 돈 − 찾은 돈·받은 증여</span>
                       </>
@@ -1767,6 +1727,46 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </div>
             <div className={activeTab === "ledger" ? "contents" : "hidden"}>
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-800">
+                    보기 필터
+                    <InfoBadge text="체크를 끈 대분류는 상세내역과 홈 차트·지출 TOP에서 잠깐 빠져요. 저장되지 않아서 새로고침하면 다시 모두 보여요." />
+                  </h2>
+                </div>
+                {filterActive ? (
+                  <button
+                    type="button"
+                    onClick={() => setHiddenMainCategories([])}
+                    className="shrink-0 text-sm font-medium text-emerald-700 hover:text-emerald-900"
+                  >
+                    전체 다시 표시
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
+                {allMainCategories.map((cat) => {
+                  const visible = !hiddenSet.has(cat);
+                  return (
+                    <label
+                      key={cat}
+                      className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm hover:bg-zinc-100"
+                    >
+                      <input
+                        type="checkbox"
+                        className="rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
+                        checked={visible}
+                        onChange={() => toggleCategoryVisible(cat)}
+                      />
+                      <span className={visible ? "text-zinc-900" : "text-zinc-400 line-through"}>
+                        {cat}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+            <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-zinc-800">
@@ -1833,7 +1833,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               <div className="mt-4 overflow-x-auto">
                 {ledgerRowsForMonth.length === 0 ? (
                   <p className="py-8 text-center text-sm text-zinc-400">
-                    이 달에 표시 조건에 맞는 거래가 없습니다. 월을 바꾸거나 대분류 표시를 확인해 보세요.
+                    이 달에 표시 조건에 맞는 거래가 없습니다. 월을 바꾸거나 보기 필터를 확인해 보세요.
                   </p>
                 ) : (
                   <table className="w-full min-w-[1040px] table-fixed text-left text-sm">
