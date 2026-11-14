@@ -702,22 +702,26 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     hidden: Set<string>;
     onChange: (hidden: string[]) => void;
   }) => (
-    <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
+    <details className="group/filter rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+        <span className="text-zinc-400 transition-transform group-open/filter:rotate-90">▸</span>
         <h2 className="text-lg font-semibold text-zinc-800">
           보기 필터
           <InfoBadge text={opts.hint} />
         </h2>
-        {opts.hidden.size > 0 ? (
-          <button
-            type="button"
-            onClick={() => opts.onChange([])}
-            className="shrink-0 text-sm font-medium text-emerald-700 hover:text-emerald-900"
-          >
-            전체 다시 표시
-          </button>
-        ) : null}
-      </div>
+        <span className="text-sm text-zinc-500">
+          {opts.hidden.size > 0 ? `${opts.hidden.size}개 대분류 꺼짐` : "전체 보기"}
+        </span>
+      </summary>
+      {opts.hidden.size > 0 ? (
+        <button
+          type="button"
+          onClick={() => opts.onChange([])}
+          className="mt-3 text-sm font-medium text-emerald-700 hover:text-emerald-900"
+        >
+          전체 다시 표시
+        </button>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {allMainCategories.map((cat) => {
           const visible = !opts.hidden.has(cat);
@@ -741,7 +745,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           );
         })}
       </div>
-    </section>
+    </details>
   );
 
   return (
