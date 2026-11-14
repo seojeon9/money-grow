@@ -12,7 +12,7 @@ type FlowKind = "internal" | "asset" | "income" | "spend";
 const INCOME_GRACE_DAYS = 7;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
-/** 달력 스티커: 파스텔 동그라미 + 선 아이콘(lucide 모양, 기기마다 같은 모양) */
+/** 달력 스티커: 파스텔 동그라미 + 선 아이콘(외식은 lucide 모양, 배달은 직접 그림. 기기마다 같은 모양) */
 const STICKERS: Record<string, { className: string; path: string }> = {
   외식: {
     className: "bg-orange-100 text-orange-600",
@@ -20,7 +20,8 @@ const STICKERS: Record<string, { className: string; path: string }> = {
   },
   배달: {
     className: "bg-sky-100 text-sky-600",
-    path: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.3 7 12 12l8.7-5M12 22V12",
+    // 배달 오토바이(직접 그림): 두 바퀴, 발판, 앞 기둥과 핸들, 안장, 뒤쪽 배달통
+    path: "M3 17a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M16 17a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M8 17h8M18.5 17 16 6M14.5 6h3M5.5 14.5 7 11h5l2 6M3.5 5.5h5v5h-5z",
   },
 };
 
