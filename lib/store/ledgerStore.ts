@@ -39,7 +39,7 @@ export type CategorySettings = {
   trips?: Trip[];
   /** 자동 분류 규칙. 동기화·업로드로 새로 들어오는 거래에 적용합니다. */
   rules?: CategoryRule[];
-  /** 가계부(달력) 보기 필터에서 끈 대분류. 없으면 화면 기본값을 씁니다. */
+  /** 달력 보기 필터에서 끈 대분류. 없으면 화면 기본값을 씁니다. */
   calendarHidden?: string[];
 };
 

@@ -56,7 +56,7 @@ type LedgerApiPayload = {
 };
 
 const DEFAULT_HIDDEN_MAIN_CATEGORIES: string[] = [];
-/** 가계부(달력) 기본 필터: 고정비·자산 이동·일회성 목돈·수입은 빼고 생활 지출만 봅니다. */
+/** 달력 기본 필터: 고정비·자산 이동·일회성 목돈·수입은 빼고 생활 지출만 봅니다. */
 const DEFAULT_CALENDAR_HIDDEN: string[] = [
   "주거/통신", "금융", "세금", "주택자금", "증여", "투자", "저축",
   "내계좌이체", "카드대금", "목적자금", "가구/가전", "급여", "금융수입",
@@ -124,6 +124,11 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadLabel, setUploadLabel] = useState<string>(HOUSEHOLD_MEMBERS[0]);
+  /** 상세내역 보기 필터: 예산 항목별 또는 대분류별 */
+  const [ledgerFilterMode, setLedgerFilterMode] = useState<"budget" | "category">("category");
+  /** 예산별 필터에서 고른 예산 항목 키("none" = 예산 외). 비면 전체. */
+  const [budgetFilter, setBudgetFilter] = useState<string[]>([]);
+  const [ledgerFilterOpen, setLedgerFilterOpen] = useState(false);
   const [hiddenMainCategories, setHiddenMainCategories] = useState<string[]>([
     ...DEFAULT_HIDDEN_MAIN_CATEGORIES,
   ]);
@@ -350,7 +355,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   }, [ledgerWithSettlements, hiddenSet]);
 
   const calendarHiddenSet = useMemo(() => new Set(calendarHidden), [calendarHidden]);
-  /** 가계부(달력)용 거래: 숨김 거래, 가계부 필터에서 끈 대분류, 전액 환불된 결제와 그 환불을 뺍니다. */
+  /** 달력용 거래: 숨김 거래, 달력 필터에서 끈 대분류, 전액 환불된 결제와 그 환불을 뺍니다. */
   const calendarEntries = useMemo(() => {
     const refunded = refundedPairIds(ledgerWithSettlements.filter(isLedgerEntryCounted));
     return ledgerWithSettlements
@@ -403,14 +408,27 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     return Array.from(s).sort((a, b) => b.localeCompare(a));
   }, [monthsInData, txMonth]);
 
+  /** 거래가 들어가는 예산 항목(그 달에 적용된 예산 기준, 없으면 "none") */
+  const budgetItemOfEntry = useCallback(
+    (e: LedgerEntry) =>
+      budgetPlanForMonth(budgetPlans, e.date.slice(0, 7))?.categoryMappings[mainCategoryOf(e)] ?? "none",
+    [budgetPlans]
+  );
+
   const ledgerRowsForMonth = useMemo(() => {
-    return visibleEntries
+    // 예산별로 볼 때는 대분류 필터 대신 고른 예산 항목으로 거릅니다.
+    const base =
+      ledgerFilterMode === "budget" ? ledgerWithSettlements.filter(isLedgerEntryCounted) : visibleEntries;
+    return base
       .filter((e) => e.date.startsWith(txMonth))
+      .filter(
+        (e) => ledgerFilterMode !== "budget" || budgetFilter.length === 0 || budgetFilter.includes(budgetItemOfEntry(e))
+      )
       .sort((a, b) => {
         if (a.date !== b.date) return a.date < b.date ? 1 : -1;
         return (b.time || "").localeCompare(a.time || "");
       });
-  }, [visibleEntries, txMonth]);
+  }, [visibleEntries, ledgerWithSettlements, ledgerFilterMode, budgetFilter, budgetItemOfEntry, txMonth]);
 
   /** 해당 월·대분류 필터에 맞는 숨김 거래(합계 제외, 목록에서만 토글) */
   const hiddenRowsForMonth = useMemo(() => {
@@ -722,7 +740,13 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   const filterActive = hiddenMainCategories.length > 0;
 
   const renderMonthlyBudget = ({ key, budget, spent, remaining, rate }: (typeof monthlyBudgetProgress)[number]) => (
-    <div key={key} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+    <button
+      key={key}
+      type="button"
+      onClick={() => openBudgetInLedger(key)}
+      title="상세내역에서 이 예산에 들어간 거래 보기"
+      className="block w-full rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-left hover:border-emerald-400 hover:bg-emerald-50/40"
+    >
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-semibold text-zinc-800">{budgetItemLabels[key]}</p>
         <span className={`text-xs font-semibold ${rate > 100 ? "text-red-700" : "text-zinc-700"}`}>
@@ -745,30 +769,41 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           ? `${formatWon(Math.abs(remaining))} 초과`
           : `${formatWon(remaining)} 남음`}
       </p>
-    </div>
+    </button>
   );
 
-  /** 대분류 체크 목록(보기 필터). 가계부·상세내역이 각자 다른 상태를 넘깁니다. */
+  /** 보기 필터 틀(접기/펴기). 달력·상세내역이 각자 내용을 넘깁니다. */
   const renderFilter = (opts: {
     hint: string;
-    hidden: Set<string>;
-    onChange: (hidden: string[]) => void;
+    summary: string;
+    open?: boolean;
+    onToggle?: (open: boolean) => void;
+    children: React.ReactNode;
   }) => (
-    <details className="group/filter rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <details
+      open={opts.open}
+      onToggle={(event) => opts.onToggle?.(event.currentTarget.open)}
+      className="group/filter rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"
+    >
       <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
         <span className="text-zinc-400 transition-transform group-open/filter:rotate-90">▸</span>
         <h2 className="text-lg font-semibold text-zinc-800">
           보기 필터
           <InfoBadge text={opts.hint} />
         </h2>
-        <span className="text-sm text-zinc-500">
-          {opts.hidden.size > 0 ? `${opts.hidden.size}개 대분류 꺼짐` : "전체 보기"}
-        </span>
+        <span className="text-sm text-zinc-500">{opts.summary}</span>
       </summary>
-      {opts.hidden.size > 0 ? (
+      {opts.children}
+    </details>
+  );
+
+  /** 대분류 체크 목록. 끈 대분류(hidden)를 바꿔 넘깁니다. */
+  const categoryChips = (hidden: Set<string>, onChange: (hidden: string[]) => void) => (
+    <>
+      {hidden.size > 0 ? (
         <button
           type="button"
-          onClick={() => opts.onChange([])}
+          onClick={() => onChange([])}
           className="mt-3 text-sm font-medium text-emerald-700 hover:text-emerald-900"
         >
           전체 다시 표시
@@ -776,7 +811,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {allMainCategories.map((cat) => {
-          const visible = !opts.hidden.has(cat);
+          const visible = !hidden.has(cat);
           return (
             <label
               key={cat}
@@ -787,9 +822,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                 className="rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
                 checked={visible}
                 onChange={() =>
-                  opts.onChange(
-                    visible ? [...Array.from(opts.hidden), cat] : Array.from(opts.hidden).filter((c) => c !== cat)
-                  )
+                  onChange(visible ? [...Array.from(hidden), cat] : Array.from(hidden).filter((c) => c !== cat))
                 }
               />
               <span className={visible ? "text-zinc-900" : "text-zinc-400 line-through"}>{cat}</span>
@@ -797,8 +830,21 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           );
         })}
       </div>
-    </details>
+    </>
   );
+
+  const hiddenSummary = (hidden: Set<string>) => (hidden.size > 0 ? `${hidden.size}개 대분류 꺼짐` : "전체 보기");
+  const budgetFilterLabel = (key: string) => (key === "none" ? "예산 외" : budgetItemLabels[key as BudgetItemKey]);
+
+  /** 홈 예산 카드를 누르면 그 예산 항목만 고른 상세내역으로 이동합니다. */
+  const openBudgetInLedger = (key: BudgetItemKey) => {
+    setLedgerFilterMode("budget");
+    setBudgetFilter([key]);
+    setTxMonth(budgetMonth);
+    setLedgerFilterOpen(true);
+    setActiveTab("ledger");
+    window.scrollTo({ top: 0 });
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -864,7 +910,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           {(
             [
               ["home", "홈"],
-              ["calendar", "가계부"],
+              ["calendar", "달력"],
               ["ledger", "상세내역"],
               ["analysis", "분석"],
               ["settings", "설정"],
@@ -1066,9 +1112,9 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </div>
             <div className={activeTab === "calendar" ? "contents" : "hidden"}>
               {renderFilter({
-                hint: "가계부는 직접 조절할 수 있는 생활 지출만 보도록 걸러요. 체크를 끈 대분류와 전액 환불된 결제(결제·환불 둘 다)는 달력과 날짜별 거래에서 빠지고, 이 설정은 저장돼요.",
-                hidden: calendarHiddenSet,
-                onChange: saveCalendarHidden,
+                hint: "달력은 직접 조절할 수 있는 생활 지출만 보도록 걸러요. 체크를 끈 대분류와 전액 환불된 결제(결제·환불 둘 다)는 달력과 날짜별 거래에서 빠지고, 이 설정은 저장돼요.",
+                summary: hiddenSummary(calendarHiddenSet),
+                children: categoryChips(calendarHiddenSet, saveCalendarHidden),
               })}
               <CalendarTab
                 ledger={tripLedger}
@@ -1158,7 +1204,13 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                 {monthlyBudgetProgress.filter((item) => item.key === "living").map(renderMonthlyBudget)}
                 {rolloverBudgetProgress.map(
                   ({ key, available, spent, carryover, rate, elapsedMonths }) => (
-                    <div key={key} className="rounded-lg border border-violet-200 bg-violet-50/40 p-4">
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => openBudgetInLedger(key)}
+                      title="상세내역에서 이 예산에 들어간 거래 보기"
+                      className="block w-full rounded-lg border border-violet-200 bg-violet-50/40 p-4 text-left hover:border-violet-400"
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-sm font-semibold text-zinc-800">{budgetItemLabels[key]}</p>
@@ -1186,7 +1238,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                           ? `${formatWon(Math.abs(carryover))} 초과`
                           : `${formatWon(carryover)} 이월 가능`}
                       </p>
-                    </div>
+                    </button>
                   )
                 )}
               </div>
@@ -1397,9 +1449,73 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
             </div>
             <div className={activeTab === "ledger" ? "contents" : "hidden"}>
             {renderFilter({
-              hint: "상세내역에는 모든 거래가 들어가요. 체크를 끈 대분류는 상세내역과 홈 차트에서 잠깐 빠지고, 새로고침하면 다시 모두 보여요.",
-              hidden: hiddenSet,
-              onChange: setHiddenMainCategories,
+              hint: "예산별: 홈 예산 집행률의 항목(생활비 등)에 어떤 거래가 묶였는지 봐요. 대분류별: 체크를 끈 대분류를 상세내역과 홈 차트에서 잠깐 빼요. 새로고침하면 처음 상태로 돌아가요.",
+              summary:
+                ledgerFilterMode === "budget"
+                  ? `예산별 · ${budgetFilter.length > 0 ? budgetFilter.map(budgetFilterLabel).join(", ") : "전체"}`
+                  : `대분류별 · ${hiddenSummary(hiddenSet)}`,
+              open: ledgerFilterOpen,
+              onToggle: setLedgerFilterOpen,
+              children: (
+                <>
+                  <div className="mt-3 inline-flex rounded-lg border border-zinc-200 p-0.5 text-sm" role="tablist">
+                    {(
+                      [
+                        ["budget", "예산별"],
+                        ["category", "대분류별"],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="tab"
+                        aria-selected={ledgerFilterMode === mode}
+                        onClick={() => setLedgerFilterMode(mode)}
+                        className={`rounded-md px-3 py-1 ${
+                          ledgerFilterMode === mode ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {ledgerFilterMode === "budget" ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {[...BUDGET_ITEM_KEYS, "none"].map((key) => {
+                        const on = budgetFilter.includes(key);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() =>
+                              setBudgetFilter((prev) => (on ? prev.filter((k) => k !== key) : [...prev, key]))
+                            }
+                            className={`rounded-md border px-2.5 py-1 text-sm ${
+                              on
+                                ? "border-emerald-600 bg-emerald-600 text-white"
+                                : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
+                            }`}
+                          >
+                            {budgetFilterLabel(key)}
+                          </button>
+                        );
+                      })}
+                      {budgetFilter.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setBudgetFilter([])}
+                          className="text-sm font-medium text-emerald-700 hover:text-emerald-900"
+                        >
+                          전체 보기
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    categoryChips(hiddenSet, setHiddenMainCategories)
+                  )}
+                </>
+              ),
             })}
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1483,6 +1599,15 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   {ledgerRowsForMonth.length.toLocaleString("ko-KR")}
                 </span>
                 건 · {txMonth.replace("-", "년 ")}월
+                {ledgerFilterMode === "budget" && budgetFilter.length > 0 ? (
+                  <>
+                    {" · "}
+                    {budgetFilter.map(budgetFilterLabel).join(", ")} 순사용{" "}
+                    <span className="font-medium tabular-nums text-zinc-900">
+                      {formatWon(-ledgerRowsForMonth.reduce((sum, e) => sum + e.amount, 0))}
+                    </span>
+                  </>
+                ) : null}
               </p>
               <div className="mt-4 overflow-x-auto">
                 {ledgerRowsForMonth.length === 0 ? (

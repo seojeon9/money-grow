@@ -14,7 +14,7 @@ export function pickerPositionFrom(rect: DOMRect): PickerPosition {
   return { top, left, width };
 }
 
-/** 대분류 선택 버튼(현재 값 ▾). 상세내역·가계부가 같은 모양을 씁니다. */
+/** 대분류 선택 버튼(현재 값 ▾). 상세내역·달력이 같은 모양을 씁니다. */
 export function CategoryButton({
   value,
   open,

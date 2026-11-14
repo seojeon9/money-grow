@@ -257,7 +257,7 @@ export default function CalendarTab({
       <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-zinc-800">
-            가계부
+            달력
             <InfoBadge text="여행을 등록하면 그 기간 지출이 여행 경비 한 묶음으로 모이고, 날짜 칸의 생활 지출에서는 빠져요. 약속은 내가 먼저 계산한 돈과 친구에게 받은 돈을 묶어 실제로 쓴 돈만 지출로 남겨요." />
           </h2>
           <div className="flex items-center gap-2">
