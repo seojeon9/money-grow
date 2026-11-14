@@ -5,6 +5,8 @@ import {
   BUDGET_ITEM_KEYS,
   budgetPlanEndDate,
   budgetPlanForMonth,
+  payPeriodLabelOf,
+  paydayOf,
   emptyBudgetPlan,
   type BudgetItemKey,
   type BudgetPlan,
@@ -47,7 +49,7 @@ export default function BudgetSettings({
   onDelete: (id: string) => void;
 }) {
   const sorted = [...plans].sort((a, b) => b.startDate.localeCompare(a.startDate));
-  const current = budgetPlanForMonth(plans, todayIso().slice(0, 7));
+  const current = budgetPlanForMonth(plans, payPeriodLabelOf(todayIso()));
   // undefined: 편집 안 함 · null: 새 예산 · string: 그 예산 편집
   const [editingId, setEditingId] = useState<string | null | undefined>(undefined);
   const [draft, setDraft] = useState<BudgetPlan>(emptyBudgetPlan);
@@ -58,7 +60,8 @@ export default function BudgetSettings({
   };
   const startNew = () => {
     setEditingId(null);
-    setDraft({ ...toDraft(sorted[0] ?? emptyBudgetPlan()), startDate: todayIso() });
+    // 수입은 월급날 바뀌니 다음 월급일을 기본 시작일로 둡니다.
+    setDraft({ ...toDraft(sorted[0] ?? emptyBudgetPlan()), startDate: paydayOf(payPeriodLabelOf(todayIso())) });
   };
 
   const allocated = BUDGET_ITEM_KEYS.reduce((sum, key) => sum + (draft.amounts[key] || 0), 0);

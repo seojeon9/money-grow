@@ -92,15 +92,26 @@ export function flowKindOf(
 }
 
 /**
- * 예산은 시작일부터 다음 예산 시작 전날까지 이어집니다(수입이 바뀔 때 새 예산을 시작).
- * 해당 월(YYYY-MM)에 적용되는 예산 = 그 달 말일까지 시작한 예산 중 가장 늦게 시작한 것.
+ * 예산 달(월급 기준 기간, payPeriodOf)에 적용할 예산.
+ * 기간 시작일까지 시작한 예산 중 가장 늦은 것. 예산이 기간 중간에 시작하면 다음 월급 기간부터 적용합니다
+ * (수입이 바뀌는 건 월급날이라서). 그런 예산도 없으면 기간 안에 시작한 첫 예산을 씁니다(가장 처음 예산).
  */
 export function budgetPlanForMonth(plans: SavedBudgetPlan[], month: string): SavedBudgetPlan | null {
+  const { start, end } = payPeriodOf(month);
+  const sorted = plans
+    .filter((p) => p.startDate)
+    .sort((a, b) => b.startDate.localeCompare(a.startDate) || b.createdAt.localeCompare(a.createdAt));
   return (
-    plans
-      .filter((p) => p.startDate && p.startDate.slice(0, 7) <= month)
-      .sort((a, b) => b.startDate.localeCompare(a.startDate) || b.createdAt.localeCompare(a.createdAt))[0] ?? null
+    sorted.find((p) => p.startDate <= start) ??
+    [...sorted].reverse().find((p) => p.startDate <= end) ??
+    null
   );
+}
+
+/** 이 예산이 처음 적용되는 예산 달 이름 */
+export function budgetPlanFirstMonth(plans: SavedBudgetPlan[], plan: SavedBudgetPlan): string {
+  const label = payPeriodLabelOf(plan.startDate);
+  return budgetPlanForMonth(plans, label)?.id === plan.id ? label : shiftMonth(label, 1);
 }
 
 /** 예산이 끝나는 날(다음 예산 시작 전날). 다음 예산이 없으면 ""(진행 중). */

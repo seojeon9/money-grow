@@ -100,11 +100,19 @@ export async function POST(req: Request) {
       )
     );
     const budgetPlans = store.budgetPlans.map(renameMappings);
+    // 자동 분류 규칙과 달력 필터도 새 이름을 따라가야 다음 동기화에서 옛 이름이 되살아나지 않습니다.
+    const rules = store.categorySettings.rules?.map((r) => (r.category === oldName ? { ...r, category: newName } : r));
+    const calendarHidden = store.categorySettings.calendarHidden?.map((c) => (c === oldName ? newName : c));
     const saved = await writeLedgerStore({
       ...store,
       entries,
       budgetPlans,
-      categorySettings: { ...store.categorySettings, categories },
+      categorySettings: {
+        ...store.categorySettings,
+        categories,
+        ...(rules ? { rules } : {}),
+        ...(calendarHidden ? { calendarHidden } : {}),
+      },
     });
     return NextResponse.json(storeToResponse(saved));
   }

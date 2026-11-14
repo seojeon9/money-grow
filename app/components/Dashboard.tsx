@@ -27,6 +27,7 @@ import {
   type BudgetPlan,
   type SavedBudgetPlan,
   budgetPlanEndDate,
+  budgetPlanFirstMonth,
   budgetPlanForMonth,
   payPeriodLabelOf,
   payPeriodOf,
@@ -307,9 +308,10 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     const syntheticEntries: LedgerEntry[] = [];
 
     for (const group of settlementGroups) {
+      // 숨긴 거래는 묶음 합계에서 빼고 숨긴 거래 목록에 남깁니다.
       const members = group.memberIds
         .map((id) => entriesById.get(id))
-        .filter((entry): entry is LedgerEntry => !!entry);
+        .filter((entry): entry is LedgerEntry => !!entry && isLedgerEntryCounted(entry));
       if (members.length < 2) continue;
       members.forEach((entry) => entry.id && groupedIds.add(entry.id));
       detailsByGroupId.set(group.id, members);
@@ -375,7 +377,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
   const flowKind = useCallback(
     (entry: LedgerEntry) =>
-      flowKindOf(entry, budgetPlanForMonth(budgetPlans, entry.date.slice(0, 7))?.categoryMappings ?? {}),
+      flowKindOf(entry, budgetPlanForMonth(budgetPlans, payPeriodLabelOf(entry.date))?.categoryMappings ?? {}),
     [budgetPlans]
   );
 
@@ -420,7 +422,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   /** 거래가 들어가는 예산 항목(그 달에 적용된 예산 기준, 없으면 "none") */
   const budgetItemOfEntry = useCallback(
     (e: LedgerEntry) =>
-      budgetPlanForMonth(budgetPlans, e.date.slice(0, 7))?.categoryMappings[mainCategoryOf(e)] ?? "none",
+      budgetPlanForMonth(budgetPlans, payPeriodLabelOf(e.date))?.categoryMappings[mainCategoryOf(e)] ?? "none",
     [budgetPlans]
   );
 
@@ -501,7 +503,6 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     if (monthPlan) {
       for (const entry of ledgerWithSettlements) {
         if (!isLedgerEntryCounted(entry)) continue;
-        if (entry.date < monthPlan.startDate || (monthPlanEnd && entry.date > monthPlanEnd)) continue;
         if (entry.date < budgetPeriod.start || entry.date > budgetPeriod.end) continue;
         const item = monthPlan.categoryMappings[mainCategoryOf(entry)];
         if (!item) continue;
@@ -521,17 +522,16 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         rate: budget > 0 ? (used / budget) * 100 : 0,
       };
     });
-  }, [budgetPeriod, monthPlan, monthPlanEnd, ledgerWithSettlements]);
+  }, [budgetPeriod, monthPlan, ledgerWithSettlements]);
 
   /** 누적 예산: 조회 월의 예산 시작부터 그 달 말(또는 오늘·예산 끝)까지 쌓인 금액과 사용액 */
   const rolloverBudgetProgress = useMemo(() => {
-    const periodEnd = budgetPeriod.end;
-    const cutoff = [localTodayIso(), periodEnd, monthPlanEnd || periodEnd].sort()[0];
-    // 예산 시작이 속한 예산 달부터 조회 예산 달까지 몇 달째인지(월급 기준 달로 셈)
+    const cutoff = [localTodayIso(), budgetPeriod.end].sort()[0];
+    // 이 예산이 처음 적용된 예산 달부터 조회 예산 달까지(월급 기준 달로 셈)
+    const firstMonth = monthPlan ? budgetPlanFirstMonth(budgetPlans, monthPlan) : "";
+    const from = firstMonth ? payPeriodOf(firstMonth).start : "";
     const elapsedMonths =
-      monthPlan && cutoff >= monthPlan.startDate
-        ? inclusiveMonthCount(`${payPeriodLabelOf(monthPlan.startDate)}-01`, `${payPeriodLabelOf(cutoff)}-01`)
-        : 0;
+      monthPlan && cutoff >= from ? inclusiveMonthCount(`${firstMonth}-01`, `${payPeriodLabelOf(cutoff)}-01`) : 0;
     const spent = Object.fromEntries(ROLLOVER_BUDGET_KEYS.map((key) => [key, 0])) as Record<
       BudgetItemKey,
       number
@@ -539,7 +539,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     if (monthPlan && elapsedMonths > 0) {
       for (const entry of ledgerWithSettlements) {
         if (!isLedgerEntryCounted(entry)) continue;
-        if (entry.date < monthPlan.startDate || entry.date > cutoff) continue;
+        if (entry.date < from || entry.date > cutoff) continue;
         const item = monthPlan.categoryMappings[mainCategoryOf(entry)];
         if (item === "personal" || item === "emergency") spent[item] -= entry.amount;
       }
@@ -557,7 +557,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         cutoff,
       };
     });
-  }, [budgetPeriod, monthPlan, monthPlanEnd, ledgerWithSettlements]);
+  }, [budgetPeriod, budgetPlans, monthPlan, ledgerWithSettlements]);
 
   const applySettingsPayload = useCallback((j: LedgerApiPayload) => {
     if (j.ledger) setLedger(j.ledger);
