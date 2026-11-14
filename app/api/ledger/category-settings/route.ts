@@ -6,7 +6,9 @@ type Body =
   | { action: "add"; name?: string }
   | { action: "rename"; oldName?: string; newName?: string }
   | { action: "delete"; name?: string }
-  | { action: "budget-label"; key?: string; label?: string };
+  | { action: "budget-label"; key?: string; label?: string }
+  | { action: "trip-add"; name?: string; startDate?: string; endDate?: string }
+  | { action: "trip-delete"; id?: string };
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -100,6 +102,32 @@ export async function POST(req: Request) {
       entries,
       budgetPlans,
       categorySettings: { ...store.categorySettings, categories },
+    });
+    return NextResponse.json(storeToResponse(saved));
+  }
+
+  if (body.action === "trip-add" || body.action === "trip-delete") {
+    let trips = store.categorySettings.trips ?? [];
+    if (body.action === "trip-add") {
+      const name = clean(body.name);
+      const startDate = clean(body.startDate);
+      const endDate = clean(body.endDate);
+      const isDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+      if (!name || !isDate(startDate) || !isDate(endDate) || startDate > endDate) {
+        return NextResponse.json(
+          { error: "여행 이름과 올바른 시작일·종료일이 필요합니다." },
+          { status: 400 }
+        );
+      }
+      trips = [...trips, { id: crypto.randomUUID(), name, startDate, endDate }].sort((a, b) =>
+        b.startDate.localeCompare(a.startDate)
+      );
+    } else {
+      trips = trips.filter((trip) => trip.id !== clean(body.id));
+    }
+    const saved = await writeLedgerStore({
+      ...store,
+      categorySettings: { ...store.categorySettings, trips },
     });
     return NextResponse.json(storeToResponse(saved));
   }

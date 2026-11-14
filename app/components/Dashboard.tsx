@@ -31,6 +31,8 @@ import {
   flowKindOf,
   HOUSEHOLD_MEMBERS,
   mainCategoryOf,
+  applyTrips,
+  type Trip,
 } from "@/lib/budget";
 import type { CategorySettings, SettlementGroup } from "@/lib/store/ledgerStore";
 
@@ -155,6 +157,8 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   const [budgetSaved, setBudgetSaved] = useState(false);
   const [budgetMonth, setBudgetMonth] = useState<string>(currentMonthKey);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [tripDraft, setTripDraft] = useState({ name: "", startDate: "", endDate: "" });
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [expandedBudgetPlanId, setExpandedBudgetPlanId] = useState<string | null>(null);
   const [reusePlanId, setReusePlanId] = useState<string | null>(null);
@@ -174,6 +178,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           setBudgetPlans(j.budgetPlans ?? []);
           setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
           setConfiguredCategories(j.categorySettings?.categories ?? []);
+        setTrips(j.categorySettings?.trips ?? []);
           setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
           setFileLabel((prev) => prev ?? "저장된 누적 데이터");
         }
@@ -204,6 +209,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setBudgetPlans(j.budgetPlans ?? []);
         setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
         setConfiguredCategories(j.categorySettings?.categories ?? []);
+        setTrips(j.categorySettings?.trips ?? []);
         setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
         if (!j.ledger?.length) {
           setError("가계부 시트를 찾지 못했거나 데이터가 없습니다. 엑셀 형식을 확인해 주세요.");
@@ -236,6 +242,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setBudgetPlans(j.budgetPlans ?? []);
         setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
         setConfiguredCategories(j.categorySettings?.categories ?? []);
+        setTrips(j.categorySettings?.trips ?? []);
         setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
         if (!j.ledger?.length) {
           setError("가계부 시트를 찾지 못했거나 데이터가 없습니다. 엑셀 형식을 확인해 주세요.");
@@ -273,9 +280,12 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
   const hiddenSet = useMemo(() => new Set(hiddenMainCategories), [hiddenMainCategories]);
 
+  /** 여행 기간 안의 지출은 여행/숙박으로 본 가계부. 집계·목록은 모두 이걸 씁니다. */
+  const tripLedger = useMemo(() => applyTrips(ledger, trips), [ledger, trips]);
+
   const settlementView = useMemo(() => {
     const entriesById = new Map(
-      ledger.filter((entry) => entry.id).map((entry) => [entry.id as string, entry])
+      tripLedger.filter((entry) => entry.id).map((entry) => [entry.id as string, entry])
     );
     const groupedIds = new Set<string>();
     const detailsByGroupId = new Map<string, LedgerEntry[]>();
@@ -315,14 +325,14 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       });
     }
     return { groupedIds, detailsByGroupId, syntheticEntries };
-  }, [ledger, settlementGroups]);
+  }, [tripLedger, settlementGroups]);
 
   const ledgerWithSettlements = useMemo(
     () => [
-      ...ledger.filter((entry) => !entry.id || !settlementView.groupedIds.has(entry.id)),
+      ...tripLedger.filter((entry) => !entry.id || !settlementView.groupedIds.has(entry.id)),
       ...settlementView.syntheticEntries,
     ],
-    [ledger, settlementView]
+    [tripLedger, settlementView]
   );
 
   /** 숨김(status) + 대분류 필터 통과분만 집계·차트·일반 목록에 사용 */
@@ -544,6 +554,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
     if (j.categorySettings) {
       setConfiguredCategories(j.categorySettings.categories);
+      setTrips(j.categorySettings.trips ?? []);
       setBudgetItemLabels(j.categorySettings.budgetItemLabels);
     }
     setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
@@ -879,6 +890,72 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   </label>
                 ))}
               </div>
+              <h3 className="mt-6 text-sm font-semibold text-zinc-800">여행 기간</h3>
+              <p className="mt-1 text-xs text-zinc-500">
+                기간 안의 지출(식비·교통·쇼핑 등)을 여행/숙박으로 집계합니다. 주거·금융·저축·투자·세금·목적자금·가구/가전과
+                직접 바꾼 대분류는 그대로 둡니다.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={tripDraft.name}
+                  onChange={(event) => setTripDraft((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="여행 이름"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <input
+                  type="date"
+                  value={tripDraft.startDate}
+                  onChange={(event) => setTripDraft((prev) => ({ ...prev, startDate: event.target.value }))}
+                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <input
+                  type="date"
+                  value={tripDraft.endDate}
+                  min={tripDraft.startDate || undefined}
+                  onChange={(event) => setTripDraft((prev) => ({ ...prev, endDate: event.target.value }))}
+                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={
+                    settingsBusy ||
+                    !tripDraft.name.trim() ||
+                    !tripDraft.startDate ||
+                    !tripDraft.endDate ||
+                    tripDraft.startDate > tripDraft.endDate
+                  }
+                  onClick={() => {
+                    void updateCategorySettings({ action: "trip-add", ...tripDraft });
+                    setTripDraft({ name: "", startDate: "", endDate: "" });
+                  }}
+                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  여행 추가
+                </button>
+              </div>
+              <ul className="mt-3 space-y-2">
+                {trips.map((trip) => (
+                  <li key={trip.id} className="flex items-center gap-2 rounded-lg border border-zinc-200 p-2 text-sm">
+                    <span className="font-medium text-zinc-800">{trip.name}</span>
+                    <span className="flex-1 text-zinc-500">
+                      {trip.startDate} ~ {trip.endDate}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={settingsBusy}
+                      onClick={() => {
+                        if (window.confirm(`'${trip.name}' 여행 기간을 삭제할까요?`)) {
+                          void updateCategorySettings({ action: "trip-delete", id: trip.id });
+                        }
+                      }}
+                      className="rounded px-2 py-1 text-xs text-zinc-400 hover:bg-red-50 hover:text-red-700"
+                    >
+                      삭제
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </section>
 
             <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">

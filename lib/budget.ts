@@ -92,3 +92,34 @@ export function budgetPlanForMonth(plans: SavedBudgetPlan[], month: string): Sav
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null
   );
 }
+
+export type Trip = { id: string; name: string; startDate: string; endDate: string };
+
+export const TRAVEL_CATEGORY = "여행/숙박";
+
+/** 여행 기간이어도 여행비로 보지 않는 대분류(고정비·자산 이동·일회성 목돈). */
+const NON_TRAVEL_CATEGORIES = new Set([
+  "주거/통신",
+  "금융",
+  "저축",
+  "투자",
+  "세금",
+  "목적자금",
+  "가구/가전",
+  "내계좌이체",
+  "카드대금",
+]);
+
+/**
+ * 등록한 여행 기간 안의 지출(환불 포함)을 여행/숙박으로 봅니다.
+ * 사용자가 직접 바꾼 대분류(categoryMainOverride)가 있으면 그걸 그대로 둡니다.
+ */
+export function applyTrips(entries: LedgerEntry[], trips: Trip[]): LedgerEntry[] {
+  if (trips.length === 0) return entries;
+  return entries.map((e) => {
+    if (e.categoryMainOverride?.trim() || e.txType !== "지출") return e;
+    if (NON_TRAVEL_CATEGORIES.has(e.categoryMain.trim())) return e;
+    const trip = trips.find((t) => t.startDate <= e.date && e.date <= t.endDate);
+    return trip ? { ...e, categoryMainOverride: TRAVEL_CATEGORY } : e;
+  });
+}

@@ -5,6 +5,7 @@ import {
   type BudgetItemKey,
   type BudgetPlan,
   type SavedBudgetPlan,
+  type Trip,
   emptyBudgetPlan,
 } from "@/lib/budget";
 import { existsSync, mkdirSync, readFileSync } from "fs";
@@ -32,6 +33,8 @@ export type SettlementGroup = {
 export type CategorySettings = {
   categories: string[];
   budgetItemLabels: Record<BudgetItemKey, string>;
+  /** 여행 기간. 기간 안의 지출은 화면에서 여행/숙박으로 집계합니다(원본 대분류는 그대로). */
+  trips?: Trip[];
 };
 
 export type LedgerStoreV1 = {
