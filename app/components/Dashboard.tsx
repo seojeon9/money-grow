@@ -652,6 +652,23 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
       .finally(() => setNoteBusyId(null));
   }, [settlementView.detailsByGroupId]);
 
+  const updateEntryLabels = useCallback((entry: LedgerEntry, labels: string[]) => {
+    if (!entry.id) return;
+    setError(null);
+    fetch("/api/ledger/entry-labels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: entry.id, labels }),
+    })
+      .then(async (res) => {
+        const j = (await res.json()) as LedgerApiPayload;
+        if (!res.ok) throw new Error(j.error ?? res.statusText);
+        setLedger(j.ledger ?? []);
+        setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
+      })
+      .catch((err: Error) => setError(err.message));
+  }, []);
+
   /** 정산 묶기(POST)·풀기(DELETE). 성공하면 true. */
   const requestSettlement = useCallback(
     (method: "POST" | "DELETE", body: { memberIds?: string[]; groupId?: string }) => {
@@ -1036,6 +1053,8 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                 onDeleteEvent={(id) => void updateCategorySettings({ action: "trip-delete", id })}
                 onGroup={(memberIds) => requestSettlement("POST", { memberIds })}
                 onUngroup={(groupId) => void requestSettlement("DELETE", { groupId })}
+                onNote={updateEntryNote}
+                onLabels={updateEntryLabels}
               />
             </div>
             <div className={activeTab === "home" ? "contents" : "hidden"}>

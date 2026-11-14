@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { mainCategoryOf, type Trip } from "@/lib/budget";
+import { ENTRY_LABELS, entryLabelsOf, mainCategoryOf, type Trip } from "@/lib/budget";
 import { isLedgerEntryCounted, type LedgerEntry } from "@/lib/excel/importBankExport";
 import type { SettlementGroup } from "@/lib/store/ledgerStore";
 import InfoBadge from "./InfoBadge";
@@ -36,6 +36,8 @@ export default function CalendarTab({
   onDeleteEvent,
   onGroup,
   onUngroup,
+  onNote,
+  onLabels,
 }: {
   /** 여행 분류가 적용된 원본 거래(정산 후보용) */
   ledger: LedgerEntry[];
@@ -49,10 +51,14 @@ export default function CalendarTab({
   onDeleteEvent: (id: string) => void;
   onGroup: (memberIds: string[]) => Promise<boolean>;
   onUngroup: (groupId: string) => void;
+  onNote: (entry: LedgerEntry, note: string) => void;
+  onLabels: (entry: LedgerEntry, labels: string[]) => void;
 }) {
   const [month, setMonth] = useState(() => todayIso().slice(0, 7));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  /** 라벨·메모를 편집 중인 거래 */
+  const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [draft, setDraft] = useState({ name: "", kind: "약속", startDate: "", endDate: "" });
 
@@ -68,6 +74,22 @@ export default function CalendarTab({
     const m = new Map<string, number>();
     for (const e of dayEntries) {
       if (flowKind(e) === "spend") m.set(e.date, (m.get(e.date) ?? 0) - e.amount);
+    }
+    return m;
+  }, [dayEntries, flowKind]);
+
+  /** 날짜별 스티커(외식·배달 등): 그날 지출에 붙은 라벨 중 스티커가 있는 것 */
+  const stickersByDate = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const e of dayEntries) {
+      if (flowKind(e) !== "spend") continue;
+      for (const label of entryLabelsOf(e)) {
+        const sticker = ENTRY_LABELS.find((l) => l.name === label && "sticker" in l);
+        if (sticker && "sticker" in sticker) {
+          if (!m.has(e.date)) m.set(e.date, new Set());
+          m.get(e.date)!.add(sticker.sticker);
+        }
+      }
     }
     return m;
   }, [dayEntries, flowKind]);
@@ -195,8 +217,15 @@ export default function CalendarTab({
                   inMonth ? "" : "opacity-40"
                 } ${date === draft.startDate ? "ring-2 ring-inset ring-emerald-600" : ""}`}
               >
-                <span className={`tabular-nums ${date === todayIso() ? "font-bold text-emerald-700" : "text-zinc-600"}`}>
-                  {Number(date.slice(8))}
+                <span className="flex items-center gap-0.5">
+                  <span className={`tabular-nums ${date === todayIso() ? "font-bold text-emerald-700" : "text-zinc-600"}`}>
+                    {Number(date.slice(8))}
+                  </span>
+                  {Array.from(stickersByDate.get(date) ?? []).map((sticker) => (
+                    <span key={sticker} className="text-sm leading-none" aria-hidden="true">
+                      {sticker}
+                    </span>
+                  ))}
                 </span>
                 {dayEvents.map((e) => (
                   <span
@@ -267,7 +296,7 @@ export default function CalendarTab({
             <h2 className="text-lg font-semibold text-zinc-800">
               {Number(selectedDate.slice(5, 7))}월 {Number(selectedDate.slice(8))}일 (
               {WEEKDAYS[new Date(`${selectedDate}T00:00:00Z`).getUTCDay()]})
-              <InfoBadge text="그날의 거래예요. 내 계좌끼리 옮긴 돈·카드대금·투자는 회색으로 보이고 지출 합계에는 들어가지 않아요." />
+              <InfoBadge text="그날의 거래예요. 줄을 누르면 라벨(외식·배달 등)과 메모를 달 수 있어요. 라벨은 소분류로 먼저 추정해 두고, 외식·배달은 달력 날짜 옆에 스티커로 보여요. 회색 줄(내 계좌 이동·카드대금·투자)은 지출 합계에 들어가지 않아요." />
             </h2>
             <span className="text-sm text-zinc-600">
               지출 <span className="font-semibold tabular-nums text-zinc-900">{won(daySpend)}</span>
@@ -277,10 +306,26 @@ export default function CalendarTab({
             <p className="py-6 text-center text-sm text-zinc-400">이 날은 거래가 없어요.</p>
           ) : (
             <ul className="mt-3 divide-y divide-zinc-100">
-              {dayRows.map(({ e, kind }, i) => (
-                <li
-                  key={e.id ?? i}
-                  className={`flex items-center gap-3 py-2 text-sm ${kind === "spend" || kind === "income" ? "" : "text-zinc-400"}`}
+              {dayRows.map(({ e, kind }, i) => {
+                const editable = !!e.id && e.txType !== "정산";
+                const labels = entryLabelsOf(e);
+                const memo = e.noteOverride ?? e.note ?? "";
+                const open = editable && openRowId === e.id;
+                return (
+                <li key={e.id ?? i} className="py-1">
+                <div
+                  role={editable ? "button" : undefined}
+                  tabIndex={editable ? 0 : undefined}
+                  onClick={() => editable && setOpenRowId(open ? null : (e.id as string))}
+                  onKeyDown={(ev) => {
+                    if (editable && (ev.key === "Enter" || ev.key === " ")) {
+                      ev.preventDefault();
+                      setOpenRowId(open ? null : (e.id as string));
+                    }
+                  }}
+                  className={`flex items-center gap-3 rounded py-1 text-sm ${editable ? "cursor-pointer hover:bg-zinc-50" : ""} ${
+                    kind === "spend" || kind === "income" ? "" : "text-zinc-400"
+                  }`}
                 >
                   <span className="w-12 shrink-0 tabular-nums text-zinc-500">{e.time.slice(0, 5)}</span>
                   <span className="w-8 shrink-0 text-zinc-500">{e.sourceLabel}</span>
@@ -290,6 +335,12 @@ export default function CalendarTab({
                   <span className="min-w-0 flex-1 truncate">
                     {e.description}
                     {e.txType === "정산" ? <span className="ml-1 text-xs text-blue-700">정산</span> : null}
+                    {labels.map((label) => (
+                      <span key={label} className="ml-1 rounded-full bg-orange-100 px-1.5 text-[11px] text-orange-800">
+                        {label}
+                      </span>
+                    ))}
+                    {memo ? <span className="ml-2 text-xs text-zinc-400">{memo}</span> : null}
                   </span>
                   <span
                     className={`shrink-0 tabular-nums ${
@@ -299,8 +350,44 @@ export default function CalendarTab({
                     {e.amount > 0 ? "+" : ""}
                     {won(e.amount)}
                   </span>
+                </div>
+                {open ? (
+                  <div className="mb-2 ml-14 flex flex-wrap items-center gap-1.5 rounded-lg bg-zinc-50 p-2">
+                    {ENTRY_LABELS.map(({ name }) => {
+                      const on = labels.includes(name);
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => onLabels(e, on ? labels.filter((l) => l !== name) : [...labels, name])}
+                          className={`rounded-full border px-2 py-0.5 text-xs ${
+                            on ? "border-orange-300 bg-orange-100 text-orange-800" : "border-zinc-300 bg-white text-zinc-500 hover:bg-zinc-100"
+                          }`}
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
+                    <input
+                      type="text"
+                      defaultValue={memo}
+                      placeholder="메모"
+                      aria-label="메모"
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter") ev.currentTarget.blur();
+                      }}
+                      onBlur={(ev) => {
+                        const value = ev.currentTarget.value.trim();
+                        if (value !== memo) onNote(e, value);
+                      }}
+                      className="ml-auto min-w-[10rem] flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm"
+                    />
+                  </div>
+                ) : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>

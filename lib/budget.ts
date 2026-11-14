@@ -196,3 +196,32 @@ export function refundedPairIds(entries: LedgerEntry[]): Set<string> {
   }
   return paired;
 }
+
+/** 가계부 라벨. 달력에 스티커로 보여줄 라벨에는 sticker가 있습니다. */
+export const ENTRY_LABELS = [
+  { name: "외식", sticker: "🍽️" },
+  { name: "배달", sticker: "🛵" },
+  { name: "점심" },
+  { name: "커피" },
+  { name: "디저트" },
+  { name: "편의점" },
+] as const satisfies readonly { name: string; sticker?: string }[];
+
+const EATING_OUT_SUBS = new Set(["한식", "일식", "중식", "양식", "고기", "아시아음식", "뷔페", "피자", "치킨", "패스트푸드"]);
+const DESSERT_SUBS = new Set(["베이커리", "디저트/떡", "아이스크림/빙수", "도넛/핫도그"]);
+
+/**
+ * 거래의 라벨. 직접 단 라벨이 있으면(빈 배열 포함) 그것을, 없으면 뱅크샐러드 소분류로 추정합니다.
+ * ponytail: 소분류 → 라벨 고정 매핑, 맞지 않으면 직접 고치면 됨.
+ */
+export function entryLabelsOf(e: LedgerEntry): string[] {
+  if (e.labels) return e.labels;
+  if (e.amount >= 0) return [];
+  const sub = e.categorySub;
+  if (sub === "배달") return ["배달"];
+  if (sub === "커피/음료") return ["커피"];
+  if (sub === "편의점") return ["편의점"];
+  if (DESSERT_SUBS.has(sub)) return ["디저트"];
+  if (e.categoryMain === "식비" && EATING_OUT_SUBS.has(sub)) return ["외식"];
+  return [];
+}

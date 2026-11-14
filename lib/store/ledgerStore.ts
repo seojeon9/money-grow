@@ -78,7 +78,8 @@ CREATE TABLE IF NOT EXISTS entries (
   note TEXT NOT NULL,
   category_main_override TEXT,
   note_override TEXT,
-  status TEXT NOT NULL DEFAULT 'visible' CHECK (status IN ('visible', 'hidden'))
+  status TEXT NOT NULL DEFAULT 'visible' CHECK (status IN ('visible', 'hidden')),
+  labels TEXT
 );
 CREATE INDEX IF NOT EXISTS entries_stable_key ON entries(stable_key);
 CREATE INDEX IF NOT EXISTS entries_date ON entries(date);
@@ -127,6 +128,9 @@ function getDb(): DatabaseSync {
   db = new DatabaseSync(DB_PATH);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  // 라벨(외식·배달 등) 칸은 나중에 추가됐습니다. 예전 DB에는 칸을 붙입니다.
+  const cols = db.prepare("PRAGMA table_info(entries)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "labels")) db.exec("ALTER TABLE entries ADD COLUMN labels TEXT");
   // 예전 버전에서 들어온 거래는 id가 없어 화면에서 분류·메모·정산을 할 수 없었습니다.
   db.exec("UPDATE entries SET id = lower(hex(randomblob(16))) WHERE id IS NULL");
   const initialized = db.prepare("SELECT 1 FROM meta WHERE key = 'updatedAt'").get();
@@ -158,8 +162,8 @@ function saveStore(d: DatabaseSync, store: LedgerStoreV1) {
     );
     const insEntry = d.prepare(
       `INSERT INTO entries (id, stable_key, source_label, date, time, tx_type, category_main, category_sub,
-        description, amount, currency, payment_method, note, category_main_override, note_override, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        description, amount, currency, payment_method, note, category_main_override, note_override, status, labels)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const e of store.entries) {
       insEntry.run(
@@ -178,7 +182,8 @@ function saveStore(d: DatabaseSync, store: LedgerStoreV1) {
         e.note,
         e.categoryMainOverride ?? null,
         e.noteOverride ?? null,
-        e.status === "hidden" ? "hidden" : "visible"
+        e.status === "hidden" ? "hidden" : "visible",
+        e.labels ? JSON.stringify(e.labels) : null
       );
     }
     const insGroup = d.prepare("INSERT INTO settlement_groups (id, created_at) VALUES (?, ?)");
@@ -242,6 +247,7 @@ function loadStore(d: DatabaseSync): LedgerStoreV1 {
     if (r.category_main_override !== null) e.categoryMainOverride = r.category_main_override as string;
     if (r.id !== null) e.id = r.id as string;
     if (r.note_override !== null) e.noteOverride = r.note_override as string;
+    if (r.labels) e.labels = JSON.parse(r.labels as string);
     return e;
   });
   const members = d
