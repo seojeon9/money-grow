@@ -285,6 +285,14 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
   const hiddenSet = useMemo(() => new Set(hiddenMainCategories), [hiddenMainCategories]);
 
+  /** 홈 카드용 자산 분류별 합계. 현금성 = 부동산·연금을 뺀 나머지(입출금·적금·투자). */
+  const assetSum = useMemo(() => {
+    const byCategory = (category: string) =>
+      (netWorth?.assets ?? []).filter((a) => a.category === category).reduce((sum, a) => sum + a.amount, 0);
+    const cash = (netWorth?.totalAssets ?? 0) - byCategory("부동산") - byCategory("연금 자산");
+    return { byCategory, cash };
+  }, [netWorth]);
+
   /** 여행 기간 안의 지출은 여행/숙박으로 본 가계부. 집계·목록은 모두 이걸 씁니다. */
   const tripLedger = useMemo(() => applyTrips(ledger, trips), [ledger, trips]);
 
@@ -1367,35 +1375,31 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
               />
             </div>
             <div className={activeTab === "home" ? "contents" : "hidden"}>
-            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <section className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
               <StatCard
                 label="순자산"
                 value={netWorth ? formatWon(netWorth.netWorth) : "—"}
-                hint="뱅크샐러드 자산 현황(서정+상윤)을 마지막으로 동기화한 시점의 자산 − 부채예요."
+                hint="뱅크샐러드 자산 현황(서정+상윤)의 전체 자산 − 부채예요. 마지막 동기화 시점 기준이에요."
               />
               <StatCard
-                label="자산 합계"
-                value={
-                  netWorth
-                    ? formatWon(
-                        netWorth.totalAssets -
-                          netWorth.assets
-                            .filter((a) => a.category === "부동산")
-                            .reduce((sum, a) => sum + a.amount, 0)
-                      )
-                    : "—"
-                }
-                hint="뱅크샐러드 자산 현황의 계좌·적금·투자·연금 합계예요. 부동산은 빼고, 순자산에는 넣어요."
+                label="현금성 자산"
+                value={netWorth ? formatWon(assetSum.cash) : "—"}
+                hint={`입출금 ${formatWon(assetSum.byCategory("자유입출금 자산") + assetSum.byCategory("전자금융 자산"))} · 적금·예금 ${formatWon(assetSum.byCategory("저축성 자산"))} · 투자 ${formatWon(assetSum.byCategory("투자성 자산"))}`}
               />
               <StatCard
-                label="부채 합계"
+                label="부동산"
+                value={netWorth ? formatWon(assetSum.byCategory("부동산")) : "—"}
+                hint="뱅크샐러드에 등록된 시세예요."
+              />
+              <StatCard
+                label="부채"
                 value={netWorth ? formatWon(netWorth.totalDebt) : "—"}
                 hint="뱅크샐러드 자산 현황의 대출 합계예요."
               />
               <StatCard
-                label="거래 건수"
-                value={`${visibleEntries.length.toLocaleString("ko-KR")}건`}
-                hint={`${filterActive ? "숨긴 거래와 꺼둔 대분류" : "숨긴 거래"}를 뺀 건수예요. 저장된 전체 거래는 ${ledger.length.toLocaleString("ko-KR")}건이에요.`}
+                label="연금"
+                value={netWorth ? formatWon(assetSum.byCategory("연금 자산")) : "—"}
+                hint="당장 쓸 수 없는 돈이라 현금성 자산과 따로 봐요."
               />
             </section>
 
