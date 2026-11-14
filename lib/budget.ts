@@ -125,3 +125,16 @@ export function applyTrips(entries: LedgerEntry[], trips: Trip[]): LedgerEntry[]
     return trip ? { ...e, categoryMainOverride: TRAVEL_CATEGORY } : e;
   });
 }
+
+/** 자동 분류 규칙: 내용(description)에 match가 들어 있으면 그 대분류로 봅니다. */
+export type CategoryRule = { match: string; category: string };
+
+/** 직접 바꾼 대분류가 없는 거래에만 규칙을 적용해 categoryMainOverride로 남깁니다. 먼저 등록한 규칙이 우선입니다. */
+export function applyCategoryRules(entries: LedgerEntry[], rules: CategoryRule[] = []): LedgerEntry[] {
+  if (rules.length === 0) return entries;
+  return entries.map((e) => {
+    if (e.categoryMainOverride?.trim()) return e;
+    const rule = rules.find((r) => e.description.includes(r.match));
+    return rule && rule.category !== e.categoryMain ? { ...e, categoryMainOverride: rule.category } : e;
+  });
+}

@@ -33,6 +33,7 @@ import {
   mainCategoryOf,
   applyTrips,
   type Trip,
+  type CategoryRule,
 } from "@/lib/budget";
 import type { CategorySettings, NetWorthPoint, SettlementGroup } from "@/lib/store/ledgerStore";
 import CalendarTab from "./CalendarTab";
@@ -161,6 +162,8 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
   const [budgetMonth, setBudgetMonth] = useState<string>(currentMonthKey);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [rules, setRules] = useState<CategoryRule[]>([]);
+  const [ruleDraft, setRuleDraft] = useState({ match: "", category: "" });
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [expandedBudgetPlanId, setExpandedBudgetPlanId] = useState<string | null>(null);
   const [reusePlanId, setReusePlanId] = useState<string | null>(null);
@@ -182,6 +185,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
           setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
           setConfiguredCategories(j.categorySettings?.categories ?? []);
         setTrips(j.categorySettings?.trips ?? []);
+        setRules(j.categorySettings?.rules ?? []);
           setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
           setFileLabel((prev) => prev ?? "저장된 누적 데이터");
         }
@@ -214,6 +218,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
         setConfiguredCategories(j.categorySettings?.categories ?? []);
         setTrips(j.categorySettings?.trips ?? []);
+        setRules(j.categorySettings?.rules ?? []);
         setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
         if (!j.ledger?.length) {
           setError("가계부 시트를 찾지 못했거나 데이터가 없습니다. 엑셀 형식을 확인해 주세요.");
@@ -248,6 +253,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
         setActiveBudgetPlanId(j.activeBudgetPlanId ?? null);
         setConfiguredCategories(j.categorySettings?.categories ?? []);
         setTrips(j.categorySettings?.trips ?? []);
+        setRules(j.categorySettings?.rules ?? []);
         setBudgetItemLabels(j.categorySettings?.budgetItemLabels ?? DEFAULT_BUDGET_ITEM_LABELS);
         if (!j.ledger?.length) {
           setError("가계부 시트를 찾지 못했거나 데이터가 없습니다. 엑셀 형식을 확인해 주세요.");
@@ -568,6 +574,7 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
     if (j.categorySettings) {
       setConfiguredCategories(j.categorySettings.categories);
       setTrips(j.categorySettings.trips ?? []);
+      setRules(j.categorySettings.rules ?? []);
       setBudgetItemLabels(j.categorySettings.budgetItemLabels);
     }
     setPersistInfo({ updatedAt: j.updatedAt ?? null, path: j.persistPath ?? null });
@@ -892,6 +899,59 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   </div>
                 ))}
               </div>
+              <h3 className="mt-6 text-sm font-semibold text-zinc-800">
+                자동 분류 규칙
+                <InfoBadge text="내용에 이 글자가 들어간 거래를 항상 이 대분류로 분류해요. 추가하면 기존 거래에도 바로 적용되고, 동기화로 새로 들어오는 거래에도 적용돼요. 직접 바꾼 분류는 건드리지 않아요." />
+              </h3>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={ruleDraft.match}
+                  onChange={(event) => setRuleDraft((prev) => ({ ...prev, match: event.target.value }))}
+                  placeholder="내용에 들어가는 글자 (예: KT통신요금)"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <select
+                  value={ruleDraft.category}
+                  onChange={(event) => setRuleDraft((prev) => ({ ...prev, category: event.target.value }))}
+                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                >
+                  <option value="">대분류 선택</option>
+                  {allMainCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={settingsBusy || !ruleDraft.match.trim() || !ruleDraft.category}
+                  onClick={() => {
+                    void updateCategorySettings({ action: "rule-add", ...ruleDraft });
+                    setRuleDraft({ match: "", category: "" });
+                  }}
+                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  규칙 추가
+                </button>
+              </div>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {rules.map((rule) => (
+                  <li key={rule.match} className="flex items-center gap-2 rounded-lg border border-zinc-200 p-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate text-zinc-800">
+                      &ldquo;{rule.match}&rdquo; → <span className="font-medium">{rule.category}</span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={settingsBusy}
+                      onClick={() => void updateCategorySettings({ action: "rule-delete", match: rule.match })}
+                      className="rounded px-2 py-1 text-xs text-zinc-400 hover:bg-red-50 hover:text-red-700"
+                    >
+                      삭제
+                    </button>
+                  </li>
+                ))}
+              </ul>
               <h3 className="mt-6 text-sm font-semibold text-zinc-800">예산 항목 이름</h3>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {BUDGET_ITEM_KEYS.map((key) => (

@@ -6,6 +6,8 @@ import {
   type BudgetPlan,
   type SavedBudgetPlan,
   type Trip,
+  type CategoryRule,
+  applyCategoryRules,
   emptyBudgetPlan,
 } from "@/lib/budget";
 import { existsSync, mkdirSync, readFileSync } from "fs";
@@ -35,6 +37,8 @@ export type CategorySettings = {
   budgetItemLabels: Record<BudgetItemKey, string>;
   /** 여행 기간. 기간 안의 지출은 화면에서 여행/숙박으로 집계합니다(원본 대분류는 그대로). */
   trips?: Trip[];
+  /** 자동 분류 규칙. 동기화·업로드로 새로 들어오는 거래에 적용합니다. */
+  rules?: CategoryRule[];
 };
 
 export type LedgerStoreV1 = {
@@ -511,7 +515,7 @@ export function applySyncToStore(
 
   for (const part of parts) {
     const before = entries.length;
-    entries = mergeLedgerAdditive(entries, part.ledger);
+    entries = mergeLedgerAdditive(entries, applyCategoryRules(part.ledger, prev.categorySettings.rules));
     const dr = minMaxIsoDates(part.ledger.map((e) => e.date));
     log.push({
       at,
@@ -544,7 +548,7 @@ export function applyUploadToStore(
   fileName: string
 ): LedgerStoreV1 {
   const before = prev.entries.length;
-  const entries = mergeLedgerAdditive(prev.entries, ledger);
+  const entries = mergeLedgerAdditive(prev.entries, applyCategoryRules(ledger, prev.categorySettings.rules));
   const dr = minMaxIsoDates(ledger.map((e) => e.date));
   const at = new Date().toISOString();
   const log = [

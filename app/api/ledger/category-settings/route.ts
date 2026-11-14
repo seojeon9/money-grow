@@ -1,4 +1,4 @@
-import { BUDGET_ITEM_KEYS, type BudgetItemKey } from "@/lib/budget";
+import { BUDGET_ITEM_KEYS, applyCategoryRules, type BudgetItemKey } from "@/lib/budget";
 import { readLedgerStore, storeToResponse, writeLedgerStore } from "@/lib/store/ledgerStore";
 import { NextResponse } from "next/server";
 
@@ -8,7 +8,9 @@ type Body =
   | { action: "delete"; name?: string }
   | { action: "budget-label"; key?: string; label?: string }
   | { action: "trip-add"; name?: string; kind?: string; startDate?: string; endDate?: string }
-  | { action: "trip-delete"; id?: string };
+  | { action: "trip-delete"; id?: string }
+  | { action: "rule-add"; match?: string; category?: string }
+  | { action: "rule-delete"; match?: string };
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -103,6 +105,28 @@ export async function POST(req: Request) {
       budgetPlans,
       categorySettings: { ...store.categorySettings, categories },
     });
+    return NextResponse.json(storeToResponse(saved));
+  }
+
+  if (body.action === "rule-add") {
+    const match = clean(body.match);
+    const category = clean(body.category);
+    if (!match || !category) {
+      return NextResponse.json({ error: "내용에 들어갈 글자와 대분류가 필요합니다." }, { status: 400 });
+    }
+    const rules = [...(store.categorySettings.rules ?? []).filter((r) => r.match !== match), { match, category }];
+    // 이미 있는 거래 중 직접 바꾸지 않은 것에도 바로 적용합니다.
+    const saved = await writeLedgerStore({
+      ...store,
+      entries: applyCategoryRules(store.entries, [{ match, category }]),
+      categorySettings: { ...store.categorySettings, rules },
+    });
+    return NextResponse.json(storeToResponse(saved));
+  }
+
+  if (body.action === "rule-delete") {
+    const rules = (store.categorySettings.rules ?? []).filter((r) => r.match !== clean(body.match));
+    const saved = await writeLedgerStore({ ...store, categorySettings: { ...store.categorySettings, rules } });
     return NextResponse.json(storeToResponse(saved));
   }
 
