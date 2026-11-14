@@ -721,6 +721,34 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
 
   const filterActive = hiddenMainCategories.length > 0;
 
+  const renderMonthlyBudget = ({ key, budget, spent, remaining, rate }: (typeof monthlyBudgetProgress)[number]) => (
+
+    <div key={key} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-800">{budgetItemLabels[key]}</p>
+        <span className={`text-xs font-semibold ${rate > 100 ? "text-red-700" : "text-zinc-700"}`}>
+          {budget > 0 ? `${rate.toFixed(1)}%` : "미설정"}
+        </span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
+        <div
+          className={`h-full rounded-full ${
+            rate > 100 ? "bg-red-500" : rate >= 80 ? "bg-amber-500" : "bg-emerald-600"
+          }`}
+          style={{ width: `${Math.min(rate, 100)}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs text-zinc-500">
+        {formatWon(spent)} 사용 / {formatWon(budget)}
+      </p>
+      <p className={`mt-1 text-xs ${remaining < 0 ? "text-red-700" : "text-zinc-400"}`}>
+        {remaining < 0
+          ? `${formatWon(Math.abs(remaining))} 초과`
+          : `${formatWon(remaining)} 남음`}
+      </p>
+    </div>
+  );
+
   /** 대분류 체크 목록(보기 필터). 가계부·상세내역이 각자 다른 상태를 넘깁니다. */
   const renderFilter = (opts: {
     hint: string;
@@ -1123,35 +1151,12 @@ export default function Dashboard({ householdLabel = "우리 가구" }: Props) {
                   </select>
                 </label>
               </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {monthlyBudgetProgress.map(({ key, budget, spent, remaining, rate }) => (
-                  <div key={key} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-zinc-800">{budgetItemLabels[key]}</p>
-                      <span className={`text-xs font-semibold ${rate > 100 ? "text-red-700" : "text-zinc-700"}`}>
-                        {budget > 0 ? `${rate.toFixed(1)}%` : "미설정"}
-                      </span>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
-                      <div
-                        className={`h-full rounded-full ${
-                          rate > 100 ? "bg-red-500" : rate >= 80 ? "bg-amber-500" : "bg-emerald-600"
-                        }`}
-                        style={{ width: `${Math.min(rate, 100)}%` }}
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-zinc-500">
-                      {formatWon(spent)} 사용 / {formatWon(budget)}
-                    </p>
-                    <p className={`mt-1 text-xs ${remaining < 0 ? "text-red-700" : "text-zinc-400"}`}>
-                      {remaining < 0
-                        ? `${formatWon(Math.abs(remaining))} 초과`
-                        : `${formatWon(remaining)} 남음`}
-                    </p>
-                  </div>
-                ))}
+              {/* 위: 주거비·투자·고정비, 아래: 생활비·품위유지비·비상금(누적) */}
+              <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                {monthlyBudgetProgress.filter((item) => item.key !== "living").map(renderMonthlyBudget)}
               </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                {monthlyBudgetProgress.filter((item) => item.key === "living").map(renderMonthlyBudget)}
                 {rolloverBudgetProgress.map(
                   ({ key, available, spent, carryover, rate, elapsedMonths }) => (
                     <div key={key} className="rounded-lg border border-violet-200 bg-violet-50/40 p-4">
